@@ -191,6 +191,15 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
+/* macOS: let the native window vibrancy (frosted translucency) show through the
+   app background; soften the ambient gradient since vibrancy provides texture. */
+.is-mac body {
+  background-color: transparent;
+}
+.is-mac body::before {
+  opacity: 0.6;
+}
+
 /* Ambient gradient — gives backdrop-blur visual content */
 body::before {
   content: '';

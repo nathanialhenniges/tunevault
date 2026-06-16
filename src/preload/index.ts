@@ -12,6 +12,7 @@ const appVersion: string = (() => {
 
 const api = {
   getVersion: (): string => appVersion,
+  platform: process.platform,
 
   // Playlist
   fetchPlaylist: (url: string): Promise<Playlist> =>
