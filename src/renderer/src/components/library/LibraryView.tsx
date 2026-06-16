@@ -95,7 +95,7 @@ export function LibraryView(): JSX.Element {
       <div>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold font-display">Library</h2>
+            <h2 className="text-2xl font-semibold font-display tracking-tight">Library</h2>
             <p className="text-sm text-text-secondary mt-1">
               {tracks.length} tracks · {library.playlists.length} playlists
             </p>

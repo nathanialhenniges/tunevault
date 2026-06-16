@@ -17,7 +17,7 @@ export function SettingsView(): JSX.Element {
 
   return (
     <div className="space-y-8">
-      <h2 className="text-xl font-semibold font-display">Settings</h2>
+      <h2 className="text-2xl font-semibold font-display tracking-tight">Settings</h2>
 
       {/* Music Directory */}
       <div className="space-y-2">

@@ -38,7 +38,7 @@ export function DownloadQueue(): JSX.Element {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold font-display">Downloads</h2>
+          <h2 className="text-2xl font-semibold font-display tracking-tight">Downloads</h2>
           {entries.length > 0 && (
             <p className="text-sm text-text-secondary mt-1">
               {doneCount} of {entries.length} complete

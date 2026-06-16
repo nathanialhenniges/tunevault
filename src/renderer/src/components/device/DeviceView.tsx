@@ -71,8 +71,8 @@ export function DeviceView(): JSX.Element {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold font-display flex items-center gap-2">
-            <DevicePhoneMobileIcon className="w-5 h-5" /> Devices
+          <h2 className="text-2xl font-semibold font-display tracking-tight flex items-center gap-2">
+            <DevicePhoneMobileIcon className="w-6 h-6" /> Devices
           </h2>
           <p className="text-sm text-text-muted mt-1">
             Create a device, assign playlists to it, then Sync to mirror them into its folder — drag

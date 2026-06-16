@@ -184,7 +184,7 @@ export function PlaylistView(): JSX.Element {
   return (
     <div className="flex flex-col flex-1 min-h-0 space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-4 font-display">Fetch Playlist</h2>
+        <h2 className="text-2xl font-semibold mb-4 font-display tracking-tight">Fetch Playlist</h2>
         <PlaylistInput />
       </div>
 
@@ -200,7 +200,7 @@ export function PlaylistView(): JSX.Element {
             <div className="absolute inset-0 rounded-full blur-xl opacity-30" style={{ background: 'var(--accent)' }} />
             <MusicalNoteIcon className="relative w-12 h-12 opacity-30" style={{ animation: 'textPulse 2s ease-in-out infinite' }} />
           </div>
-          <p className="text-base font-display">Paste a YouTube playlist URL to get started</p>
+          <p className="text-base font-display">Paste a YouTube or Apple Music playlist URL to get started</p>
           <p className="text-sm mt-1 opacity-60">Your tracks will appear here</p>
         </div>
       )}
