@@ -60,7 +60,7 @@ select:focus-visible,
 
   --text-primary: #18181b;
   --text-secondary: #52525b;
-  --text-muted: #a1a1aa;
+  --text-muted: #71717a; /* AA (~4.8:1) on white — used for real secondary info */
   --text-inverted: #ffffff;
 
   --scrollbar-thumb: #d4d4d8;
@@ -121,7 +121,7 @@ select:focus-visible,
 
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
-  --text-muted: #52525b;
+  --text-muted: #76767f; /* AA (~4.5:1) on dark — used for real secondary info */
   --text-inverted: #09090b;
 
   --scrollbar-thumb: #23232a;

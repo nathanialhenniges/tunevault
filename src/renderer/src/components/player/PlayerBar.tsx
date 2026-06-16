@@ -189,7 +189,7 @@ export function PlayerBar(): JSX.Element {
         <div className="relative">
           <button
             onClick={() => setShowCrossfadeMenu(!showCrossfadeMenu)}
-            className={`text-[10px] font-medium px-1.5 py-0.5 rounded transition ${
+            className={`text-[11px] font-medium px-1.5 py-0.5 rounded transition ${
               crossfadeDuration > 0
                 ? 'text-accent bg-accent/10'
                 : 'text-text-muted hover:text-text-secondary'
