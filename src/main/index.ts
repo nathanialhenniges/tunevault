@@ -3,6 +3,7 @@ import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllIpc } from './ipc/register'
+import { buildAppMenu } from './menu'
 import { createTray } from './tray'
 import { abortAllDownloads, hasActiveDownloads } from './ipc/download.ipc'
 import { SettingsService } from './services/settings.service'
@@ -101,6 +102,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.nathanialhenniges.tunevault')
+  buildAppMenu()
 
   // Set About panel for macOS to show TuneVault instead of Electron
   if (process.platform === 'darwin') {
