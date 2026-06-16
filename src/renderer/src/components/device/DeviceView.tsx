@@ -74,7 +74,7 @@ export function DeviceView(): JSX.Element {
           <h2 className="text-2xl font-semibold font-display tracking-tight flex items-center gap-2">
             <DevicePhoneMobileIcon className="w-6 h-6" /> Devices
           </h2>
-          <p className="text-sm text-text-muted mt-1">
+          <p className="text-sm text-text-secondary mt-1">
             Create a device, assign playlists to it, then Sync to mirror them into its folder — drag
             that into iTunes to sync your iPod.
           </p>
@@ -88,7 +88,7 @@ export function DeviceView(): JSX.Element {
       </div>
 
       {devices.length === 0 ? (
-        <p className="text-sm text-text-muted">
+        <p className="text-sm text-text-secondary">
           No devices yet. Create one to start assigning playlists and syncing.
         </p>
       ) : (
@@ -134,7 +134,7 @@ export function DeviceView(): JSX.Element {
 
                 <div className="flex flex-wrap items-center gap-2">
                   {assigned.length === 0 ? (
-                    <span className="text-xs text-text-muted">No playlists assigned yet.</span>
+                    <span className="text-xs text-text-secondary">No playlists assigned yet.</span>
                   ) : (
                     assigned.map((p) => (
                       <span
@@ -177,7 +177,7 @@ export function DeviceView(): JSX.Element {
 
       <Modal open={showNew} onClose={() => setShowNew(false)} className="w-[26rem] p-5">
         <h3 className="text-base font-semibold font-display mb-1">New Device</h3>
-        <p className="text-xs text-text-muted mb-4">
+        <p className="text-xs text-text-secondary mb-4">
           Creates a folder under <code>TuneVault/Devices/</code>.
         </p>
         <input
@@ -210,7 +210,7 @@ export function DeviceView(): JSX.Element {
 
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} className="w-[26rem] p-5">
         <h3 className="text-base font-semibold font-display mb-1">Delete Device</h3>
-        <p className="text-xs text-text-muted mb-4 break-all">
+        <p className="text-xs text-text-secondary mb-4 break-all">
           Permanently deletes the folder and everything in it:
           <br />
           <code>{confirmDelete?.dir}</code>
