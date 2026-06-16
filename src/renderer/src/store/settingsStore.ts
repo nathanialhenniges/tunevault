@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type { AppSettings, AccentColor, Device } from '../../../shared/models'
 import { DEFAULT_SETTINGS } from '../../../shared/models'
-import { toast } from './toastStore'
 
 function applyTheme(theme: 'dark' | 'light' | 'system'): void {
   const root = document.documentElement
@@ -71,7 +70,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       applyAccent(settings.accent)
     }
     set({ settings })
-    toast.success('Settings saved')
   },
 
   selectMusicDir: async () => {
