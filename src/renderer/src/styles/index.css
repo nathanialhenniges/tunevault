@@ -191,10 +191,11 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
-/* macOS: let the native window vibrancy (frosted translucency) show through the
-   app background; soften the ambient gradient since vibrancy provides texture. */
+/* macOS: keep a mostly-opaque backing so text contrast stays readable (WCAG AA),
+   while a thin layer of the native window vibrancy still shows through for depth.
+   Fully-transparent vibrancy tanked legibility, so favor readability. */
 .is-mac body {
-  background-color: transparent;
+  background-color: color-mix(in srgb, var(--bg-base) 90%, transparent);
 }
 .is-mac body::before {
   opacity: 0.6;
