@@ -4,6 +4,7 @@ import { PlaylistView } from '../playlist/PlaylistView'
 
 const DownloadQueue = lazy(() => import('../download/DownloadQueue').then((m) => ({ default: m.DownloadQueue })))
 const LibraryView = lazy(() => import('../library/LibraryView').then((m) => ({ default: m.LibraryView })))
+const DeviceView = lazy(() => import('../device/DeviceView').then((m) => ({ default: m.DeviceView })))
 const SettingsView = lazy(() => import('../settings/SettingsView').then((m) => ({ default: m.SettingsView })))
 
 export function AnimatedRoutes(): JSX.Element {
@@ -36,6 +37,7 @@ export function AnimatedRoutes(): JSX.Element {
           <Route path="/" element={<PlaylistView />} />
           <Route path="/downloads" element={<DownloadQueue />} />
           <Route path="/library" element={<LibraryView />} />
+          <Route path="/device" element={<DeviceView />} />
           <Route path="/settings" element={<SettingsView />} />
         </Routes>
       </Suspense>

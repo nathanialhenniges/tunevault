@@ -5,6 +5,7 @@ import {
   QueueListIcon,
   ArrowDownTrayIcon,
   MusicalNoteIcon,
+  DevicePhoneMobileIcon,
   Cog6ToothIcon
 } from '@heroicons/react/24/outline'
 
@@ -12,6 +13,7 @@ const navItems = [
   { path: '/', label: 'Playlists', Icon: QueueListIcon },
   { path: '/downloads', label: 'Downloads', Icon: ArrowDownTrayIcon },
   { path: '/library', label: 'Library', Icon: MusicalNoteIcon },
+  { path: '/device', label: 'Device', Icon: DevicePhoneMobileIcon },
   { path: '/settings', label: 'Settings', Icon: Cog6ToothIcon }
 ]
 

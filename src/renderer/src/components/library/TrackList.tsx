@@ -92,6 +92,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
       <span className="w-14 text-right text-xs text-text-muted">
         {track.bitrate ? `${track.bitrate}kbps` : ''}
       </span>
+      <span className="w-24 text-xs text-text-muted truncate">{track.genre || ''}</span>
 
       <div className="w-20 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition">
         {track.filePath && (
@@ -221,6 +222,7 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
         <SortHeader field="playlist" label="Playlist" className="w-32" />
         <SortHeader field="duration" label="Duration" className="w-16 justify-end" />
         <span className="w-14 text-right">Bitrate</span>
+        <span className="w-24">Genre</span>
         <span className="w-20"></span>
       </div>
 

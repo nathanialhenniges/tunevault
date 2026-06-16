@@ -1,5 +1,5 @@
 import { YouTubeService } from './youtube.service'
-import { parseApplePlaylistHtml, extractAppleListId } from './apple-music-parse'
+import { parseApplePlaylistHtml, extractAppleListId, isAppleMusicUrl } from './apple-music-parse'
 import type { Playlist, Track } from '../../shared/models'
 
 // Pretend to be a desktop browser — Apple serves a minimal page to unknown agents.
@@ -27,9 +27,7 @@ async function mapLimit<T, R>(
 export class AppleMusicService {
   private yt = new YouTubeService()
 
-  static isAppleMusicUrl(url: string): boolean {
-    return /(^|\.)music\.apple\.com\//.test(url)
-  }
+  static isAppleMusicUrl = isAppleMusicUrl
 
   async fetchPlaylist(url: string): Promise<Playlist> {
     const res = await fetch(url, {

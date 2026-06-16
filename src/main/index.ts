@@ -21,6 +21,11 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason)
 })
 
+// Set the app name BEFORE `ready` (and before anything resolves getPath('userData')).
+// macOS reads the menu/app name and the userData dir at launch — setting this inside
+// whenReady() is too late, leaving menus as "Electron" and scattering saved data.
+app.setName('TuneVault')
+
 // 1.4 — Single instance lock: prevent multiple app instances writing to same data files
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -96,7 +101,6 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.nathanialhenniges.tunevault')
-  app.setName('TuneVault')
 
   // Set About panel for macOS to show TuneVault instead of Electron
   if (process.platform === 'darwin') {

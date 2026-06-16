@@ -12,13 +12,15 @@ import {
   CheckIcon,
   XMarkIcon,
   MusicalNoteIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useSyncStore } from '../../store/syncStore'
 import { useLocation } from 'react-router-dom'
 import { Modal } from '../ui/Modal'
 import { PlaylistInfoModal } from './PlaylistInfoModal'
+import { toast } from '../../store/toastStore'
 
 export function LibraryView(): JSX.Element {
   const { load, selectAllTracks, clearSelection, deleteTracks, deleteAll, openFolder } = useLibraryStore(useShallow((s) => ({
@@ -44,6 +46,9 @@ export function LibraryView(): JSX.Element {
   const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false)
   const [showPlaylistInfo, setShowPlaylistInfo] = useState(false)
   const [playlistFilter, setPlaylistFilter] = useState<string>('all')
+  const [fetchingGenres, setFetchingGenres] = useState(false)
+  const devices = useSettingsStore((s) => s.settings.devices)
+  const toggleDevicePlaylist = useSettingsStore((s) => s.toggleDevicePlaylist)
   const location = useLocation()
 
   useEffect(() => {
@@ -127,6 +132,30 @@ export function LibraryView(): JSX.Element {
               Open Folder
             </button>
           )}
+          {library.playlists.length > 0 && (
+            <button
+              onClick={async () => {
+                const ids =
+                  playlistFilter !== 'all' ? [playlistFilter] : library.playlists.map((p) => p.id)
+                setFetchingGenres(true)
+                try {
+                  const r = await window.api.fetchGenres(ids)
+                  await load()
+                  toast.success(`Genre found for ${r.updated} tracks (${r.tagged} files tagged)`)
+                } catch (e) {
+                  toast.error((e as Error).message)
+                } finally {
+                  setFetchingGenres(false)
+                }
+              }}
+              disabled={fetchingGenres}
+              className="px-3 py-1.5 text-xs text-text-secondary hover:text-accent border border-border-default rounded-lg hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              title="Look up genre for tracks (MusicBrainz) and tag the files"
+            >
+              <MusicalNoteIcon className={`w-3.5 h-3.5 ${fetchingGenres ? 'animate-pulse' : ''}`} />
+              {fetchingGenres ? 'Fetching Genres…' : 'Fetch Genres'}
+            </button>
+          )}
 
           {/* Playlist filter */}
           {library.playlists.length > 0 && (
@@ -174,6 +203,31 @@ export function LibraryView(): JSX.Element {
                 <ArrowPathIcon className="w-3.5 h-3.5" />
                 {settings.sync.syncedPlaylistIds.includes(playlistFilter) ? 'Auto-Sync On' : 'Auto-Sync Off'}
               </button>
+              {devices.length > 0 && (
+                <div className="relative flex items-center gap-1.5">
+                  <DevicePhoneMobileIcon className="w-3.5 h-3.5 text-text-muted" />
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const d = devices.find((x) => x.id === e.target.value)
+                      if (!d) return
+                      const has = d.playlistIds.includes(playlistFilter)
+                      toggleDevicePlaylist(d.id, playlistFilter)
+                      toast.success(has ? `Removed from ${d.name}` : `Added to ${d.name}`)
+                    }}
+                    className="appearance-none border border-[var(--glass-border-edge)] rounded-lg px-3 py-1.5 pr-7 text-xs text-text-secondary hover:text-text-primary focus:outline-none focus:border-accent cursor-pointer transition"
+                    style={{ background: 'var(--glass-input-bg)' }}
+                    title="Add this playlist to a device"
+                  >
+                    <option value="">Add to Device…</option>
+                    {devices.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.playlistIds.includes(playlistFilter) ? `✓ ${d.name}` : d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </>
           )}
 

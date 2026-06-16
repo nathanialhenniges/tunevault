@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { IpcChannels } from '../../shared/ipc-channels'
 import { YouTubeService } from '../services/youtube.service'
 import { AppleMusicService } from '../services/apple-music.service'
+import { isAppleMusicUrl } from '../services/apple-music-parse'
 import type { Playlist } from '../../shared/models'
 
 interface CacheEntry {
@@ -17,7 +18,7 @@ export function registerPlaylistIpc(): void {
   const apple = new AppleMusicService()
 
   ipcMain.handle(IpcChannels.PLAYLIST_FETCH, async (_event, playlistUrl: string) => {
-    const isApple = AppleMusicService.isAppleMusicUrl(playlistUrl)
+    const isApple = isAppleMusicUrl(playlistUrl)
     const cacheKey = (isApple ? null : yt.extractPlaylistId(playlistUrl)) || playlistUrl
 
     const cached = playlistCache.get(cacheKey)

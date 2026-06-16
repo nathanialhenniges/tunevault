@@ -143,6 +143,30 @@ export function SettingsView(): JSX.Element {
         </div>
       </div>
 
+      {/* Accent Color */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium">Accent Color</label>
+        <div className="flex gap-3 flex-wrap">
+          {([
+            { value: 'orange' as const, label: 'Orange', swatch: '#f97316' },
+            { value: 'blue' as const, label: 'Blue', swatch: '#3b82f6' }
+          ]).map(({ value, label, swatch }) => (
+            <button
+              key={value}
+              onClick={() => update({ accent: value })}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                settings.accent === value
+                  ? 'bg-accent text-text-inverted'
+                  : 'bg-glass-hover text-text-secondary hover:bg-glass-active'
+              }`}
+            >
+              <span className="w-3.5 h-3.5 rounded-full" style={{ background: swatch }} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Auto-Sync */}
       <div className="space-y-2">
         <label className="block text-sm font-medium">Auto-Sync</label>

@@ -106,6 +106,26 @@ export default function App(): JSX.Element {
     e.preventDefault()
     dragCounterRef.current = 0
     setDragOver(false)
+    // Dropped local files/folders -> import into the library.
+    const files = Array.from(e.dataTransfer.files || [])
+    if (files.length) {
+      const paths = files.map((f) => window.api.pathForFile(f)).filter(Boolean)
+      if (paths.length) {
+        window.api
+          .importPaths(paths)
+          .then((r) => {
+            if (r.imported > 0) {
+              useLibraryStore.getState().load()
+              toast.success(`Imported ${r.imported} tracks into ${r.playlists} playlist(s)`)
+            } else {
+              toast.error('No audio files found to import')
+            }
+          })
+          .catch((err) => toast.error((err as Error).message))
+        return
+      }
+    }
+
     const text = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')
     if (text && /[?&]list=/.test(text)) {
       const url = text.trim().split('\n')[0]
@@ -137,7 +157,7 @@ export default function App(): JSX.Element {
         {dragOver && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 pointer-events-none" style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}>
             <div className="border-2 border-dashed border-accent rounded-2xl px-12 py-8 text-accent text-lg font-semibold">
-              Drop playlist URL
+              Drop a playlist URL, or audio files / folders to import
             </div>
           </div>
         )}

@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { formatDate, formatDuration, sanitizeFilename, trackFileBaseName } from './utils'
+import { formatDate, formatDuration, sanitizeFilename, trackFileBaseName, buildM3U } from './utils'
+
+describe('buildM3U', () => {
+  it('emits extended M3U with rounded durations and relative filenames', () => {
+    const out = buildM3U([
+      { duration: 180.7, artist: 'A', title: 'Song', fileName: '01 - A - Song.mp3' },
+      { duration: 0, artist: 'B', title: 'Two', fileName: '02 - B - Two.mp3' }
+    ])
+    expect(out).toBe(
+      '#EXTM3U\n' +
+        '#EXTINF:181,A - Song\n01 - A - Song.mp3\n' +
+        '#EXTINF:0,B - Two\n02 - B - Two.mp3\n'
+    )
+  })
+})
 
 describe('trackFileBaseName', () => {
   it('pads position and sanitizes artist/title', () => {

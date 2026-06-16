@@ -90,15 +90,23 @@ export function PlaylistInput(): JSX.Element {
         <button
           type="submit"
           disabled={loading || !url.trim()}
-          className="px-6 py-2.5 bg-accent hover:bg-accent-hover text-text-inverted disabled:bg-bg-inset disabled:text-text-muted rounded-lg text-sm font-medium transition"
+          className="btn-accent px-6 py-2.5 rounded-lg text-sm font-medium"
         >
           {loading ? 'Fetching...' : 'Fetch Playlist'}
         </button>
       </form>
 
       {error && (
-        <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500 dark:text-red-400">
-          {error}
+        <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-500 dark:text-red-400 flex items-start gap-2">
+          <span className="flex-1 select-text whitespace-pre-wrap break-words">{error}</span>
+          <button
+            type="button"
+            onClick={() => navigator.clipboard.writeText(error)}
+            className="shrink-0 text-xs px-2 py-1 rounded border border-red-500/30 hover:bg-red-500/10 btn-press"
+            title="Copy error message"
+          >
+            Copy
+          </button>
         </div>
       )}
     </div>
