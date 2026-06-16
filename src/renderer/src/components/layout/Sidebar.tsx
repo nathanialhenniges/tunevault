@@ -45,9 +45,9 @@ export function Sidebar(): JSX.Element {
               key={item.path}
               onClick={() => navigate(item.path)}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors rounded-[10px] ${
+              className={`w-full flex items-center gap-3 px-3 py-2 text-[13px] font-medium transition-colors rounded-lg ${
                 isActive
-                  ? 'bg-accent/10 text-accent shadow-[inset_0_0_0_1px_rgba(249,115,22,0.15)]'
+                  ? 'bg-accent/12 text-accent ring-1 ring-inset ring-accent/20'
                   : 'text-text-secondary hover:text-text-primary hover:bg-glass-hover'
               }`}
             >
