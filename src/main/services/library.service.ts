@@ -106,6 +106,36 @@ export class LibraryService {
     })
   }
 
+  /** Persist looked-up genres onto matching tracks (atomic single write). */
+  setTrackGenres(updates: { trackId: string; genre: string }[]): void {
+    if (!updates.length) return
+    const data = this.loadRaw()
+    const map = new Map(updates.map((u) => [u.trackId, u.genre]))
+    for (const pl of data.playlists) {
+      for (const t of pl.tracks) {
+        const g = map.get(t.id)
+        if (g) t.genre = g
+      }
+    }
+    this.save(data)
+  }
+
+  /** Add/merge a batch of tracks into a playlist (atomic single write). */
+  addTracks(playlist: Playlist, tracks: Track[]): void {
+    const data = this.loadRaw()
+    let pl = data.playlists.find((p) => p.id === playlist.id)
+    if (!pl) {
+      pl = { ...playlist, tracks: [] }
+      data.playlists.push(pl)
+    }
+    for (const t of tracks) {
+      const idx = pl.tracks.findIndex((x) => x.id === t.id)
+      if (idx >= 0) pl.tracks[idx] = t
+      else pl.tracks.push(t)
+    }
+    this.save(data)
+  }
+
   deleteTracks(trackIds: string[]): void {
     const data = this.loadRaw()
     const idsSet = new Set(trackIds)

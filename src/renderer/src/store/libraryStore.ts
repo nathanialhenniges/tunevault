@@ -63,7 +63,6 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Verify checks files on disk and removes missing tracks
     const library = await window.api.verifyLibrary()
     set({ library, loaded: true, selectedTrackIds: new Set() })
-    toast.info('Library loaded')
   },
 
   setSearchQuery: (query) => set({ searchQuery: query }),

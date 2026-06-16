@@ -142,6 +142,82 @@ export class FfmpegService {
     }
   }
 
+  /**
+   * Set only the genre tag, preserving all existing streams (audio + cover art)
+   * and other metadata. Fast: stream copy, no re-encode.
+   */
+  async setGenre(filePath: string, genre: string): Promise<void> {
+    const ffmpegPath = this.binary.getFfmpegPath()
+    const ext = filePath.substring(filePath.lastIndexOf('.'))
+    const tmpOutput = filePath + '.genre' + ext
+    const args = ['-i', filePath, '-map', '0', '-c', 'copy', '-metadata', `genre=${genre}`]
+    if (ext === '.mp3') args.push('-id3v2_version', '4')
+    args.push('-y', tmpOutput)
+
+    try {
+      await this.runFfmpeg(ffmpegPath, args)
+      const fs = await import('fs/promises')
+      await fs.rename(tmpOutput, filePath)
+    } catch (err) {
+      if (existsSync(tmpOutput)) unlinkSync(tmpOutput)
+      throw err
+    }
+  }
+
+  /** Read tags + duration + bitrate from a local audio file via ffprobe. */
+  async probe(
+    filePath: string
+  ): Promise<{
+    title?: string
+    artist?: string
+    album?: string
+    genre?: string
+    duration: number
+    bitrate?: number
+  }> {
+    const ffprobePath = this.binary.getFfprobePath()
+    const args = ['-v', 'quiet', '-print_format', 'json', '-show_format', filePath]
+    const out = await new Promise<string>((resolve, reject) => {
+      const proc = spawn(ffprobePath, args)
+      let s = ''
+      proc.stdout?.on('data', (d: Buffer) => (s += d.toString()))
+      proc.on('close', (code) => (code === 0 ? resolve(s) : reject(new Error('ffprobe failed'))))
+      proc.on('error', reject)
+    })
+    try {
+      const json = JSON.parse(out)
+      const tags = (json.format?.tags ?? {}) as Record<string, unknown>
+      const get = (k: string): string | undefined => {
+        const key = Object.keys(tags).find((x) => x.toLowerCase() === k)
+        return key && tags[key] != null ? String(tags[key]) : undefined
+      }
+      const duration = Math.round(parseFloat(String(json.format?.duration ?? '0'))) || 0
+      const bitRate = parseInt(String(json.format?.bit_rate ?? '0'), 10)
+      const bitrate = bitRate > 0 ? Math.round(bitRate / 1000) : undefined
+      return {
+        title: get('title'),
+        artist: get('artist'),
+        album: get('album'),
+        genre: get('genre'),
+        duration,
+        bitrate
+      }
+    } catch {
+      return { duration: 0 }
+    }
+  }
+
+  /** Extract embedded cover art to destPath (jpg). Returns false if the file has none. */
+  async extractCover(filePath: string, destPath: string): Promise<boolean> {
+    const ffmpegPath = this.binary.getFfmpegPath()
+    try {
+      await this.runFfmpeg(ffmpegPath, ['-i', filePath, '-map', '0:v:0', '-frames:v', '1', '-y', destPath])
+      return existsSync(destPath)
+    } catch {
+      return false
+    }
+  }
+
   private downloadFile(url: string, destPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const client = url.startsWith('https') ? https : http

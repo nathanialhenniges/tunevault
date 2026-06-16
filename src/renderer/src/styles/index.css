@@ -47,6 +47,7 @@ select:focus-visible,
   --accent: #ea580c;
   --accent-hover: #c2410c;
   --accent-glow: rgba(234, 88, 12, 0.15);
+  --accent-rgb: 234, 88, 12;
 
   --bg-base: #ffffff;
   --bg-surface: #f4f4f5;
@@ -59,7 +60,7 @@ select:focus-visible,
 
   --text-primary: #18181b;
   --text-secondary: #52525b;
-  --text-muted: #a1a1aa;
+  --text-muted: #71717a; /* AA (~4.8:1) on white — used for real secondary info */
   --text-inverted: #ffffff;
 
   --scrollbar-thumb: #d4d4d8;
@@ -107,6 +108,7 @@ select:focus-visible,
   --accent: #f97316;
   --accent-hover: #fb923c;
   --accent-glow: rgba(249, 115, 22, 0.15);
+  --accent-rgb: 249, 115, 22;
 
   --bg-base: #09090b;
   --bg-surface: #0f0f12;
@@ -119,7 +121,7 @@ select:focus-visible,
 
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
-  --text-muted: #52525b;
+  --text-muted: #76767f; /* AA (~4.5:1) on dark — used for real secondary info */
   --text-inverted: #09090b;
 
   --scrollbar-thumb: #23232a;
@@ -160,6 +162,22 @@ select:focus-visible,
   --font-display: 'DM Sans Variable', 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* ── Accent color ── orange is the default; blue is opt-in via Settings.
+   Layers over light/dark so each accent gets a tuned light + dark value.
+   Everything in the app reads var(--accent*), so switching here is app-wide. */
+[data-accent="blue"] {
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-glow: rgba(37, 99, 235, 0.15);
+  --accent-rgb: 37, 99, 235;
+}
+.dark[data-accent="blue"] {
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-glow: rgba(59, 130, 246, 0.15);
+  --accent-rgb: 59, 130, 246;
+}
+
 body {
   margin: 0;
   font-family:
@@ -173,6 +191,16 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
+/* macOS: keep a mostly-opaque backing so text contrast stays readable (WCAG AA),
+   while a thin layer of the native window vibrancy still shows through for depth.
+   Fully-transparent vibrancy tanked legibility, so favor readability. */
+.is-mac body {
+  background-color: color-mix(in srgb, var(--bg-base) 90%, transparent);
+}
+.is-mac body::before {
+  opacity: 0.6;
+}
+
 /* Ambient gradient — gives backdrop-blur visual content */
 body::before {
   content: '';
@@ -181,8 +209,9 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 20% 90%, rgba(249, 115, 22, 0.06) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 50% at 80% 10%, rgba(249, 115, 22, 0.04) 0%, transparent 70%);
+    radial-gradient(ellipse 80% 60% at 20% 90%, rgba(var(--accent-rgb), 0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 80% 10%, rgba(var(--accent-rgb), 0.04) 0%, transparent 70%);
+  transition: background 0.3s ease;
 }
 
 /* ── Glass utility classes ───────────────────────────────── */
@@ -456,6 +485,28 @@ body::before {
 .btn-press:active {
   transform: scale(0.95);
   transition: transform 0.07s ease;
+}
+
+/* ── macOS 26 accent button ── glossy fill + accent glow, follows the picker */
+.btn-accent {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%);
+  color: var(--text-inverted);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 2px 8px rgba(var(--accent-rgb), 0.35);
+  transition: filter 0.15s ease, transform 0.07s ease, box-shadow 0.15s ease;
+}
+.btn-accent:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.btn-accent:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn-accent:disabled {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 /* Download shimmer animation */

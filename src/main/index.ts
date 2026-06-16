@@ -3,6 +3,7 @@ import { join, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllIpc } from './ipc/register'
+import { buildAppMenu } from './menu'
 import { createTray } from './tray'
 import { abortAllDownloads, hasActiveDownloads } from './ipc/download.ipc'
 import { SettingsService } from './services/settings.service'
@@ -20,6 +21,11 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled rejection:', reason)
 })
+
+// Set the app name BEFORE `ready` (and before anything resolves getPath('userData')).
+// macOS reads the menu/app name and the userData dir at launch — setting this inside
+// whenReady() is too late, leaving menus as "Electron" and scattering saved data.
+app.setName('TuneVault')
 
 // 1.4 — Single instance lock: prevent multiple app instances writing to same data files
 const gotLock = app.requestSingleInstanceLock()
@@ -42,7 +48,10 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 function createWindow(): BrowserWindow {
-  const mainWindow = new BrowserWindow({
+  const isMac = process.platform === 'darwin'
+  const isWin = process.platform === 'win32'
+
+  const opts: Electron.BrowserWindowConstructorOptions = {
     width: 1200,
     height: 800,
     minWidth: 900,
@@ -50,14 +59,25 @@ function createWindow(): BrowserWindow {
     show: false,
     title: 'TuneVault',
     icon: getIconPath(),
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: '#09090b',
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    // macOS: native window vibrancy (frosted translucency). Others: solid bg.
+    backgroundColor: isMac ? '#00000000' : '#09090b',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
     }
-  })
+  }
+  if (isMac) {
+    opts.trafficLightPosition = { x: 16, y: 16 }
+    opts.vibrancy = 'under-window'
+    opts.visualEffectState = 'active'
+  }
+  if (isWin) {
+    // Native window controls (min/max/close) drawn by the OS into our chrome.
+    opts.titleBarOverlay = { color: '#0f0f12', symbolColor: '#fafafa', height: 48 }
+  }
+
+  const mainWindow = new BrowserWindow(opts)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -96,7 +116,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.nathanialhenniges.tunevault')
-  app.setName('TuneVault')
+  buildAppMenu()
 
   // Set About panel for macOS to show TuneVault instead of Electron
   if (process.platform === 'darwin') {

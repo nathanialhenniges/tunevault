@@ -1,11 +1,3 @@
-export interface PlaylistInfo {
-  id: string
-  title: string
-  channelTitle: string
-  thumbnailUrl: string
-  trackCount: number
-}
-
 export interface Track {
   id: string
   videoId: string
@@ -23,6 +15,11 @@ export interface Track {
   bitrate?: number
   url?: string
   description?: string
+  /** Full source URL to download from (YouTube or SoundCloud). Falls back to a YouTube watch URL built from videoId. */
+  sourceUrl?: string
+  source?: 'youtube' | 'soundcloud'
+  /** Looked-up music genre (e.g. from MusicBrainz). Shown in the library + tagged on export. */
+  genre?: string
 }
 
 export interface Playlist {
@@ -37,6 +34,7 @@ export interface Playlist {
 export type AudioFormat = 'flac' | 'opus' | 'mp3'
 export type DateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'DD Mon YYYY'
 export type ReleaseDateSource = 'youtube' | 'musicbrainz'
+export type AccentColor = 'orange' | 'blue'
 
 export interface DownloadRequest {
   playlist: Playlist
@@ -77,11 +75,23 @@ export interface SyncResult {
   checkedAt: string
 }
 
+/** A managed media device (e.g. an iPod). Its folder lives under TuneVault/Devices/. */
+export interface Device {
+  id: string
+  name: string
+  dir: string
+  /** Playlists assigned to this device — synced into its folder. */
+  playlistIds: string[]
+}
+
 export interface AppSettings {
   musicDir: string
+  /** Managed media devices. Each syncs its assigned playlists into its folder. */
+  devices: Device[]
   audioFormat: AudioFormat
   concurrency: number
   theme: 'dark' | 'light' | 'system'
+  accent: AccentColor
   dateFormat: DateFormat
   releaseDateSource: ReleaseDateSource
   sync: SyncConfig
@@ -89,9 +99,11 @@ export interface AppSettings {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   musicDir: '',
+  devices: [],
   audioFormat: 'mp3',
   concurrency: 2,
   theme: 'dark',
+  accent: 'orange',
   dateFormat: 'MM/DD/YYYY',
   releaseDateSource: 'youtube',
   sync: { enabled: false, intervalHours: 6, syncedPlaylistIds: [], lastSyncTime: null }
@@ -103,16 +115,4 @@ export interface UpdateStatus {
   releaseNotes?: string
   error?: string
   progress?: number
-}
-
-export interface MetadataEntry {
-  position: number
-  title: string
-  artist: string
-  videoId: string
-  videoUrl: string
-  duration: number
-  thumbnailUrl: string
-  uploadDate?: string
-  description?: string
 }

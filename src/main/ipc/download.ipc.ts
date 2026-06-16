@@ -1,7 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { existsSync } from 'fs'
 import { IpcChannels } from '../../shared/ipc-channels'
-import { join } from 'path'
 import { YtdlpService } from '../services/ytdlp.service'
 import { FfmpegService } from '../services/ffmpeg.service'
 import { LibraryService } from '../services/library.service'
@@ -76,11 +75,7 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
         }
 
         // Check if track already exists on disk — skip if so
-        const playlistDir = join(outputDir, ytdlp.sanitizeFilename(playlist.title))
-        const paddedPos = String(track.position).padStart(2, '0')
-        const baseName = `${paddedPos} - ${ytdlp.sanitizeFilename(track.artist)} - ${ytdlp.sanitizeFilename(track.title)}`
-        const ext = format === 'flac' ? 'flac' : format === 'opus' ? 'opus' : 'mp3'
-        const expectedPath = join(playlistDir, `${baseName}.${ext}`)
+        const expectedPath = ytdlp.trackOutputPath(outputDir, playlist.title, track, format)
 
         if (!forceRedownload && existsSync(expectedPath)) {
           mainWindow.webContents.send(IpcChannels.DOWNLOAD_PROGRESS, {
@@ -152,10 +147,10 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
             let releaseDate: string | undefined
             let bitrate: number | undefined
             let description: string | undefined
-            const trackUrl = `https://www.youtube.com/watch?v=${track.videoId}`
+            const trackUrl = track.sourceUrl || `https://www.youtube.com/watch?v=${track.videoId}`
 
             try {
-              const meta = await ytdlp.fetchTrackMeta(track.videoId)
+              const meta = await ytdlp.fetchTrackMeta(trackUrl)
               bitrate = meta.bitrate
               description = meta.description
 
@@ -180,7 +175,7 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
                 track: track.position,
                 totalTracks,
                 date: formattedDate,
-                comment: `Downloaded from YouTube by TuneVault`,
+                comment: `Downloaded from ${track.source === 'soundcloud' ? 'SoundCloud' : 'YouTube'} by TuneVault`,
                 thumbnailUrl: track.thumbnailUrl,
                 genre: 'Music'
               })
@@ -200,8 +195,7 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
               description
             }
             library.upsertTrack(playlist, updatedTrack)
-            const playlistDir = join(outputDir, ytdlp.sanitizeFilename(playlist.title))
-            library.writePlaylistInfo(playlistDir, playlist.id)
+            library.writePlaylistInfo(ytdlp.playlistDir(outputDir, playlist.title), playlist.id)
             mainWindow.webContents.send(IpcChannels.DOWNLOAD_COMPLETE, {
               trackId: track.id,
               filePath

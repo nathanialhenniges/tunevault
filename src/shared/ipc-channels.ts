@@ -20,6 +20,11 @@ export const IpcChannels = {
   LIBRARY_READ_PLAYLIST_INFO: 'library:read-playlist-info',
   LIBRARY_VERIFY: 'library:verify',
   LIBRARY_OPEN_FILE: 'library:open-file',
+  LIBRARY_FETCH_GENRES: 'library:fetch-genres',
+  LIBRARY_IMPORT: 'library:import',
+  LIBRARY_CREATE_DEVICE: 'library:create-device',
+  LIBRARY_DELETE_DEVICE: 'library:delete-device',
+  LIBRARY_SYNC_DEVICE: 'library:sync-device',
 
   // Player
   PLAYER_GET_FILE_URL: 'player:get-file-url',

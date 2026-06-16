@@ -5,6 +5,7 @@ import {
   QueueListIcon,
   ArrowDownTrayIcon,
   MusicalNoteIcon,
+  DevicePhoneMobileIcon,
   Cog6ToothIcon
 } from '@heroicons/react/24/outline'
 
@@ -12,6 +13,7 @@ const navItems = [
   { path: '/', label: 'Playlists', Icon: QueueListIcon },
   { path: '/downloads', label: 'Downloads', Icon: ArrowDownTrayIcon },
   { path: '/library', label: 'Library', Icon: MusicalNoteIcon },
+  { path: '/device', label: 'Device', Icon: DevicePhoneMobileIcon },
   { path: '/settings', label: 'Settings', Icon: Cog6ToothIcon }
 ]
 
@@ -27,7 +29,11 @@ export function Sidebar(): JSX.Element {
     return count
   })
 
-  const recentPlaylists = library.playlists.slice(0, 5)
+  // "Downloaded" = playlists fetched from YouTube / Apple Music. Local imports
+  // (id `imported:*`) live in the Library, not here.
+  const recentPlaylists = library.playlists
+    .filter((p) => !p.id.startsWith('imported:'))
+    .slice(0, 5)
 
   return (
     <aside className="relative w-48 glass-chrome glass-border-sidebar flex flex-col transition-colors duration-200">
@@ -43,9 +49,9 @@ export function Sidebar(): JSX.Element {
               key={item.path}
               onClick={() => navigate(item.path)}
               aria-current={isActive ? 'page' : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors rounded-[10px] ${
+              className={`w-full flex items-center gap-3 px-3 py-2 text-[13px] font-medium transition-colors rounded-lg ${
                 isActive
-                  ? 'bg-accent/10 text-accent shadow-[inset_0_0_0_1px_rgba(249,115,22,0.15)]'
+                  ? 'bg-accent/12 text-accent ring-1 ring-inset ring-accent/20'
                   : 'text-text-secondary hover:text-text-primary hover:bg-glass-hover'
               }`}
             >

@@ -28,3 +28,25 @@ export function formatDuration(seconds: number): string {
 export function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim()
 }
+
+/** Canonical on-disk base name (no extension) for a track: "NN - Artist - Title". */
+export function trackFileBaseName(track: { position: number; artist: string; title: string }): string {
+  const pos = String(track.position).padStart(2, '0')
+  return `${pos} - ${sanitizeFilename(track.artist)} - ${sanitizeFilename(track.title)}`
+}
+
+/**
+ * Build an extended-M3U playlist (universal format MP3 players / iPods-via-iTunes
+ * understand). fileName entries are relative — the audio is expected to sit
+ * alongside the .m3u8 file.
+ */
+export function buildM3U(
+  entries: { duration: number; artist: string; title: string; fileName: string }[]
+): string {
+  const lines = ['#EXTM3U']
+  for (const e of entries) {
+    lines.push(`#EXTINF:${Math.round(e.duration) || 0},${e.artist} - ${e.title}`)
+    lines.push(e.fileName)
+  }
+  return lines.join('\n') + '\n'
+}

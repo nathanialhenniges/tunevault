@@ -7,14 +7,12 @@ interface VisualizerProps {
   style: VisualizerStyle
 }
 
-const ACCENT = '#f97316'
-const ACCENT_DIM = 'rgba(249, 115, 22, 0.3)'
-
 function drawBars(
   ctx: CanvasRenderingContext2D,
   data: Uint8Array,
   w: number,
   h: number,
+  accentRgb: string,
   gradientCache: { gradient: CanvasGradient; w: number; h: number } | null,
   setGradientCache: (cache: { gradient: CanvasGradient; w: number; h: number }) => void
 ): void {
@@ -26,8 +24,8 @@ function drawBars(
     gradient = gradientCache.gradient
   } else {
     gradient = ctx.createLinearGradient(0, h, 0, 0)
-    gradient.addColorStop(0, ACCENT_DIM)
-    gradient.addColorStop(1, ACCENT)
+    gradient.addColorStop(0, `rgba(${accentRgb}, 0.3)`)
+    gradient.addColorStop(1, `rgb(${accentRgb})`)
     setGradientCache({ gradient, w, h })
   }
 
@@ -38,9 +36,15 @@ function drawBars(
   }
 }
 
-function drawWaveform(ctx: CanvasRenderingContext2D, data: Uint8Array, w: number, h: number): void {
+function drawWaveform(
+  ctx: CanvasRenderingContext2D,
+  data: Uint8Array,
+  w: number,
+  h: number,
+  accentRgb: string
+): void {
   ctx.lineWidth = 2
-  ctx.strokeStyle = ACCENT
+  ctx.strokeStyle = `rgb(${accentRgb})`
   ctx.beginPath()
   const sliceW = w / data.length
   for (let i = 0; i < data.length; i++) {
@@ -51,7 +55,13 @@ function drawWaveform(ctx: CanvasRenderingContext2D, data: Uint8Array, w: number
   ctx.stroke()
 }
 
-function drawCircular(ctx: CanvasRenderingContext2D, data: Uint8Array, w: number, h: number): void {
+function drawCircular(
+  ctx: CanvasRenderingContext2D,
+  data: Uint8Array,
+  w: number,
+  h: number,
+  accentRgb: string
+): void {
   const cx = w / 2
   const cy = h / 2
   const radius = Math.min(cx, cy) * 0.4
@@ -79,7 +89,7 @@ function drawCircular(ctx: CanvasRenderingContext2D, data: Uint8Array, w: number
     const lines = buckets[b]
     if (lines.length === 0) continue
     const alpha = (b + 0.5) / 8
-    ctx.strokeStyle = `rgba(249, 115, 22, ${alpha})`
+    ctx.strokeStyle = `rgba(${accentRgb}, ${alpha})`
     ctx.beginPath()
     for (const { x1, y1, x2, y2 } of lines) {
       ctx.moveTo(x1, y1)
@@ -94,6 +104,7 @@ export function Visualizer({ enabled, style }: VisualizerProps): JSX.Element {
   const rafRef = useRef<number>(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const gradientCacheRef = useRef<{ gradient: CanvasGradient; w: number; h: number } | null>(null)
+  const accentRef = useRef('')
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -112,15 +123,23 @@ export function Visualizer({ enabled, style }: VisualizerProps): JSX.Element {
     const h = canvas.height
     ctx.clearRect(0, 0, w, h)
 
+    // Follow the current accent (orange/blue); refresh the bar gradient if it changed.
+    const accentRgb =
+      getComputedStyle(canvas).getPropertyValue('--accent-rgb').trim() || '249, 115, 22'
+    if (accentRef.current !== accentRgb) {
+      accentRef.current = accentRgb
+      gradientCacheRef.current = null
+    }
+
     if (style === 'waveform') {
       const data = new Uint8Array(analyser.fftSize)
       analyser.getByteTimeDomainData(data)
-      drawWaveform(ctx, data, w, h)
+      drawWaveform(ctx, data, w, h, accentRgb)
     } else {
       const data = new Uint8Array(analyser.frequencyBinCount)
       analyser.getByteFrequencyData(data)
-      if (style === 'circular') drawCircular(ctx, data, w, h)
-      else drawBars(ctx, data, w, h, gradientCacheRef.current, (c) => { gradientCacheRef.current = c })
+      if (style === 'circular') drawCircular(ctx, data, w, h, accentRgb)
+      else drawBars(ctx, data, w, h, accentRgb, gradientCacheRef.current, (c) => { gradientCacheRef.current = c })
     }
 
     rafRef.current = requestAnimationFrame(draw)

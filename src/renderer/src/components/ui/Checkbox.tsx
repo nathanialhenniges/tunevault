@@ -21,7 +21,7 @@ export function Checkbox({ checked, onChange, onClick, className = '' }: Checkbo
       }}
       className={`tv-checkbox group relative shrink-0 w-[18px] h-[18px] rounded-[5px] border transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-bg-base ${
         checked
-          ? 'bg-accent border-accent shadow-[0_0_8px_rgba(249,115,22,0.35)]'
+          ? 'bg-accent border-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.35)]'
           : 'border-border-default bg-bg-inset hover:border-text-muted'
       } ${className}`}
     >

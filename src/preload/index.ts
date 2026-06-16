@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { IpcChannels } from '../shared/ipc-channels'
-import type { AppSettings, DownloadRequest, DownloadProgress, LibraryData, Playlist, SyncConfig, SyncResult, UpdateStatus } from '../shared/models'
+import type { AppSettings, Device, DownloadRequest, DownloadProgress, LibraryData, Playlist, SyncConfig, SyncResult, UpdateStatus } from '../shared/models'
 
 const appVersion: string = (() => {
   try {
@@ -12,6 +12,7 @@ const appVersion: string = (() => {
 
 const api = {
   getVersion: (): string => appVersion,
+  platform: process.platform,
 
   // Playlist
   fetchPlaylist: (url: string): Promise<Playlist> =>
@@ -59,6 +60,20 @@ const api = {
     ipcRenderer.invoke(IpcChannels.LIBRARY_READ_PLAYLIST_INFO, playlistId),
   openFile: (filePath: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_OPEN_FILE, filePath),
+  fetchGenres: (playlistIds: string[]): Promise<{ updated: number; tagged: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_FETCH_GENRES, playlistIds),
+  // Resolve a dropped File to its absolute path (Electron-only API).
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+  importPaths: (paths: string[]): Promise<{ imported: number; playlists: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_IMPORT, paths),
+  createDeviceFolder: (name: string): Promise<Device> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_CREATE_DEVICE, name),
+  deleteDeviceFolder: (dir: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_DELETE_DEVICE, dir),
+  syncDevice: (
+    device: Device
+  ): Promise<{ playlists: number; copied: number; total: number; genreTagged: number; removed: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_SYNC_DEVICE, device),
 
   // Player
   getFileUrl: (filePath: string): Promise<string> =>
