@@ -149,7 +149,7 @@ export function PlayerBar(): JSX.Element {
           <button
             onClick={togglePlay}
             disabled={!currentTrack}
-            className="btn-press w-9 h-9 flex items-center justify-center bg-accent text-text-inverted rounded-full hover:bg-accent-hover hover:scale-105 disabled:opacity-50 transition shadow-[0_0_12px_rgba(249,115,22,0.3)]"
+            className="btn-accent w-10 h-10 flex items-center justify-center rounded-full hover:scale-105 transition"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
