@@ -29,7 +29,11 @@ export function Sidebar(): JSX.Element {
     return count
   })
 
-  const recentPlaylists = library.playlists.slice(0, 5)
+  // "Downloaded" = playlists fetched from YouTube / Apple Music. Local imports
+  // (id `imported:*`) live in the Library, not here.
+  const recentPlaylists = library.playlists
+    .filter((p) => !p.id.startsWith('imported:'))
+    .slice(0, 5)
 
   return (
     <aside className="relative w-48 glass-chrome glass-border-sidebar flex flex-col transition-colors duration-200">
