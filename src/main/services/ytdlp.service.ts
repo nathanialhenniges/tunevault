@@ -4,7 +4,7 @@ import { mkdirSync, unlinkSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { BinaryService } from './binary.service'
 import type { Track, AudioFormat, DownloadProgress } from '../../shared/models'
-import { sanitizeFilename } from '../../shared/utils'
+import { sanitizeFilename, trackFileBaseName } from '../../shared/utils'
 
 interface DownloadOptions {
   track: Track
@@ -22,21 +22,32 @@ export class YtdlpService {
     this.binary = new BinaryService()
   }
 
+  /** Folder a playlist's audio is written to. */
+  playlistDir(outputDir: string, playlistTitle: string): string {
+    return join(outputDir, sanitizeFilename(playlistTitle))
+  }
+
+  /** Full on-disk path a track will be (or has been) written to. */
+  trackOutputPath(outputDir: string, playlistTitle: string, track: Track, format: AudioFormat): string {
+    // ext always equals format (flac/opus/mp3 map to their own names).
+    return join(this.playlistDir(outputDir, playlistTitle), `${trackFileBaseName(track)}.${format}`)
+  }
+
   async download(options: DownloadOptions): Promise<string> {
     const { track, format, outputDir, playlistTitle, onProgress, signal } = options
 
-    const playlistDir = join(outputDir, this.sanitizeFilename(playlistTitle))
+    const playlistDir = this.playlistDir(outputDir, playlistTitle)
     mkdirSync(playlistDir, { recursive: true })
 
-    const paddedPos = String(track.position).padStart(2, '0')
-    const filename = `${paddedPos} - ${this.sanitizeFilename(track.artist)} - ${this.sanitizeFilename(track.title)}`
+    const filename = trackFileBaseName(track)
     const outputTemplate = join(playlistDir, `${filename}.%(ext)s`)
 
     const ytdlpPath = this.binary.getYtdlpPath()
     const ffmpegPath = this.binary.getFfmpegPath()
 
+    const sourceUrl = track.sourceUrl || `https://www.youtube.com/watch?v=${track.videoId}`
     const args = [
-      `https://www.youtube.com/watch?v=${track.videoId}`,
+      sourceUrl,
       '-f',
       'bestaudio',
       '--extract-audio',
@@ -144,15 +155,14 @@ export class YtdlpService {
             status: 'done'
           })
 
-          // Determine the actual output path
-          const ext = format === 'flac' ? 'flac' : format === 'opus' ? 'opus' : 'mp3'
-          const finalPath = outputPath || join(playlistDir, `${filename}.${ext}`)
+          // Determine the actual output path (ext always equals format)
+          const finalPath = outputPath || join(playlistDir, `${filename}.${format}`)
 
           // Clean up temp files left by yt-dlp (webm, m4a, part, jpg, webp, etc.)
           readdir(playlistDir).then((files) => {
             const tempExts = ['.webm', '.m4a', '.part', '.jpg', '.webp', '.png', '.temp', '.tmp']
             for (const file of files) {
-              if (file.startsWith(filename) && !file.endsWith(`.${ext}`)) {
+              if (file.startsWith(filename) && !file.endsWith(`.${format}`)) {
                 const fileExt = file.substring(file.lastIndexOf('.'))
                 if (tempExts.includes(fileExt) || file.includes('.temp')) {
                   try { unlinkSync(join(playlistDir, file)) } catch { /* ignore */ }
@@ -173,41 +183,18 @@ export class YtdlpService {
     })
   }
 
-  async dumpJson(videoId: string): Promise<Record<string, unknown>> {
-    const ytdlpPath = this.binary.getYtdlpPath()
-    const args = [
-      `https://www.youtube.com/watch?v=${videoId}`,
-      '--dump-json',
-      '--no-warnings'
-    ]
-
-    return new Promise((resolve, reject) => {
-      const proc = spawn(ytdlpPath, args)
-      let output = ''
-
-      proc.stdout?.on('data', (data: Buffer) => {
-        output += data.toString()
-      })
-
-      proc.on('close', (code) => {
-        if (code === 0) {
-          try {
-            resolve(JSON.parse(output))
-          } catch {
-            reject(new Error('Failed to parse yt-dlp JSON output'))
-          }
-        } else {
-          reject(new Error(`yt-dlp --dump-json exited with code ${code}`))
-        }
-      })
-
-      proc.on('error', reject)
-    })
+  async dumpJson(url: string): Promise<Record<string, unknown>> {
+    const output = await this.binary.runYtdlp([url, '--dump-json', '--no-warnings'])
+    try {
+      return JSON.parse(output)
+    } catch {
+      throw new Error('Failed to parse yt-dlp JSON output')
+    }
   }
 
-  async fetchTrackMeta(videoId: string): Promise<{ releaseDate?: string; bitrate?: number; description?: string }> {
+  async fetchTrackMeta(url: string): Promise<{ releaseDate?: string; bitrate?: number; description?: string }> {
     try {
-      const json = await this.dumpJson(videoId)
+      const json = await this.dumpJson(url)
       const releaseDate = (json.release_date as string) || (json.upload_date as string) || undefined
       const bitrate = typeof json.abr === 'number' ? Math.round(json.abr) : undefined
       const description = typeof json.description === 'string' ? json.description : undefined

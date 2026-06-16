@@ -62,8 +62,8 @@ export function PlaylistInput(): JSX.Element {
             onFocus={() => {
               if (recentPlaylists.length > 0 && !loading) setShowRecent(true)
             }}
-            placeholder="Paste YouTube playlist URL..."
-            aria-label="YouTube playlist URL"
+            placeholder="Paste a YouTube or Apple Music playlist URL..."
+            aria-label="YouTube or Apple Music playlist URL"
             className="w-full border border-[var(--glass-border-edge)] rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed transition"
             style={{ background: 'var(--glass-sidebar-bg)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
           />

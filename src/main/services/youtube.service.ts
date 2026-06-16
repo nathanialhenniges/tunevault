@@ -1,4 +1,3 @@
-import { spawn } from 'child_process'
 import { BinaryService } from './binary.service'
 import type { Playlist, Track } from '../../shared/models'
 
@@ -10,6 +9,8 @@ interface YtdlpFlatEntry {
   uploader: string
   channel: string
   thumbnails?: Array<{ url: string; width?: number; height?: number }>
+  thumbnail?: string
+  webpage_url?: string
   playlist_title: string
   playlist_id: string
   playlist_index: number
@@ -38,8 +39,7 @@ export class YouTubeService {
   }
 
   async fetchPlaylist(playlistUrl: string): Promise<Playlist> {
-    const ytdlpPath = this.binary.getYtdlpPath()
-    const entries = await this.runYtdlpFlat(ytdlpPath, playlistUrl)
+    const entries = await this.runYtdlpFlat(playlistUrl)
 
     if (entries.length === 0) {
       throw new Error('No tracks found in playlist. It may be empty, private, or the URL is invalid.')
@@ -74,64 +74,74 @@ export class YouTubeService {
     }
   }
 
-  private pickThumbnail(entry: YtdlpFlatEntry): string {
+  /**
+   * Resolve a free-text query to the top hit. Tries YouTube first, falls back to
+   * SoundCloud (both via yt-dlp's built-in search). Used by Apple Music import.
+   */
+  async searchVideo(query: string): Promise<{
+    videoId: string
+    title: string
+    duration: number
+    thumbnailUrl: string
+    sourceUrl: string
+    source: 'youtube' | 'soundcloud'
+  } | null> {
+    const sources = [
+      { prefix: 'ytsearch1:', source: 'youtube' as const },
+      { prefix: 'scsearch1:', source: 'soundcloud' as const }
+    ]
+    for (const { prefix, source } of sources) {
+      let entry: YtdlpFlatEntry | undefined
+      try {
+        entry = (await this.runYtdlpFlat(`${prefix}${query}`))[0]
+      } catch {
+        // Search backend failed/returned nothing — try the next source.
+        continue
+      }
+      if (!entry) continue
+      return {
+        videoId: entry.id,
+        title: entry.title,
+        duration: entry.duration ?? 0,
+        thumbnailUrl: this.pickThumbnail(entry, source),
+        sourceUrl:
+          source === 'youtube'
+            ? `https://www.youtube.com/watch?v=${entry.id}`
+            : entry.webpage_url || entry.url || '',
+        source
+      }
+    }
+    return null
+  }
+
+  private pickThumbnail(entry: YtdlpFlatEntry, source: 'youtube' | 'soundcloud' = 'youtube'): string {
     // yt-dlp provides thumbnails array sorted by quality; pick a mid-high one
     if (entry.thumbnails?.length) {
       // Prefer a thumbnail around 480px wide, or the last (highest quality)
       const preferred = entry.thumbnails.find((t) => (t.width ?? 0) >= 480)
       return preferred?.url ?? entry.thumbnails[entry.thumbnails.length - 1].url
     }
-    // Fallback to standard YouTube thumbnail URL
-    return `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg`
+    if (entry.thumbnail) return entry.thumbnail
+    // The bare-id fallback only resolves for YouTube.
+    return source === 'youtube' ? `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg` : ''
   }
 
-  private runYtdlpFlat(ytdlpPath: string, playlistUrl: string): Promise<YtdlpFlatEntry[]> {
-    return new Promise((resolve, reject) => {
-      const args = [
-        '--flat-playlist',
-        '--dump-json',
-        '--no-warnings',
-        '--ignore-errors',
-        playlistUrl
-      ]
+  private async runYtdlpFlat(playlistUrl: string): Promise<YtdlpFlatEntry[]> {
+    const stdout = await this.binary.runYtdlp(
+      ['--flat-playlist', '--dump-json', '--no-warnings', '--ignore-errors', playlistUrl],
+      { allowPartial: true }
+    )
 
-      const proc = spawn(ytdlpPath, args)
-      let stdout = ''
-      let stderr = ''
-
-      proc.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString()
-      })
-
-      proc.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString()
-      })
-
-      proc.on('close', (code) => {
-        if (code !== 0 && !stdout.trim()) {
-          reject(new Error(`Failed to fetch playlist: ${stderr.trim() || `exit code ${code}`}`))
-          return
-        }
-
-        // Each line is a separate JSON object (one per track)
-        const entries: YtdlpFlatEntry[] = []
-        const lines = stdout.trim().split('\n')
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            entries.push(JSON.parse(line) as YtdlpFlatEntry)
-          } catch {
-            // Skip malformed lines
-          }
-        }
-
-        resolve(entries)
-      })
-
-      proc.on('error', (err) => {
-        reject(new Error(`Failed to run yt-dlp: ${err.message}`))
-      })
-    })
+    // Each line is a separate JSON object (one per track)
+    const entries: YtdlpFlatEntry[] = []
+    for (const line of stdout.trim().split('\n')) {
+      if (!line.trim()) continue
+      try {
+        entries.push(JSON.parse(line) as YtdlpFlatEntry)
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    return entries
   }
 }

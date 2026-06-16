@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { formatDate, formatDuration, sanitizeFilename } from './utils'
+import { formatDate, formatDuration, sanitizeFilename, trackFileBaseName } from './utils'
+
+describe('trackFileBaseName', () => {
+  it('pads position and sanitizes artist/title', () => {
+    expect(trackFileBaseName({ position: 3, artist: 'A/C: DC', title: 'T*N?' })).toBe(
+      '03 - AC DC - TN'
+    )
+  })
+
+  it('keeps two-digit positions intact', () => {
+    expect(trackFileBaseName({ position: 12, artist: 'Foo', title: 'Bar' })).toBe('12 - Foo - Bar')
+  })
+})
 
 describe('formatDate', () => {
   it('formats YYYYMMDD to MM/DD/YYYY', () => {

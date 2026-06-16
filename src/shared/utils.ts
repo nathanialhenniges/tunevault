@@ -28,3 +28,9 @@ export function formatDuration(seconds: number): string {
 export function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim()
 }
+
+/** Canonical on-disk base name (no extension) for a track: "NN - Artist - Title". */
+export function trackFileBaseName(track: { position: number; artist: string; title: string }): string {
+  const pos = String(track.position).padStart(2, '0')
+  return `${pos} - ${sanitizeFilename(track.artist)} - ${sanitizeFilename(track.title)}`
+}

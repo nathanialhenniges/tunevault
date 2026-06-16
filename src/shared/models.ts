@@ -23,6 +23,9 @@ export interface Track {
   bitrate?: number
   url?: string
   description?: string
+  /** Full source URL to download from (YouTube or SoundCloud). Falls back to a YouTube watch URL built from videoId. */
+  sourceUrl?: string
+  source?: 'youtube' | 'soundcloud'
 }
 
 export interface Playlist {
