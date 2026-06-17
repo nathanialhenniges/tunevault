@@ -180,6 +180,18 @@ export function SettingsView(): JSX.Element {
             }))}
           />
         </Field>
+
+        <Field label="Track density" hint="Row spacing in the library and playlist lists.">
+          <Segmented
+            ariaLabel="Track density"
+            value={settings.trackDensity}
+            onChange={(v) => update({ trackDensity: v })}
+            options={[
+              { value: 'comfortable' as const, label: 'Comfortable' },
+              { value: 'compact' as const, label: 'Compact' }
+            ]}
+          />
+        </Field>
       </Section>
 
       <Section title="Sync">

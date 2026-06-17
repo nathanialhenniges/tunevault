@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { Track, DownloadProgress } from '../../../../shared/models'
+import type { Track, DownloadProgress, TrackDensity } from '../../../../shared/models'
 import { formatDuration } from '../../../../shared/utils'
 import { usePlayerStore } from '../../store/playerStore'
 import { Checkbox } from '../ui/Checkbox'
@@ -17,6 +17,7 @@ interface TrackRowProps {
   index: number
   tracks: Track[]
   selected?: boolean
+  density?: TrackDensity
   onToggleSelect?: () => void
   downloadProgress?: DownloadProgress
   onContextMenu?: (e: React.MouseEvent, track: Track) => void
@@ -63,7 +64,8 @@ function DownloadStatus({ progress }: { progress: DownloadProgress }): JSX.Eleme
   }
 }
 
-export const TrackRow = memo(function TrackRow({ track, index, tracks, selected, onToggleSelect, downloadProgress, onContextMenu }: TrackRowProps): JSX.Element {
+export const TrackRow = memo(function TrackRow({ track, index, tracks, selected, density, onToggleSelect, downloadProgress, onContextMenu }: TrackRowProps): JSX.Element {
+  const dense = density === 'compact'
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const setQueue = usePlayerStore((s) => s.setQueue)
   const play = usePlayerStore((s) => s.play)
@@ -85,7 +87,7 @@ export const TrackRow = memo(function TrackRow({ track, index, tracks, selected,
   return (
     <div
       onContextMenu={handleContextMenu}
-      className={`flex items-center gap-4 px-4 py-2.5 rounded-[var(--radius-item)] transition group ${
+      className={`flex items-center gap-4 px-4 ${dense ? 'py-1' : 'py-2.5'} rounded-[var(--radius-item)] transition group ${
         isCurrent
           ? 'bg-accent/10 text-accent border-l-2 border-accent'
           : track.filePath
@@ -105,7 +107,7 @@ export const TrackRow = memo(function TrackRow({ track, index, tracks, selected,
         className="flex items-center gap-4 flex-1 min-w-0 text-left"
       >
         <span className="w-6 text-right text-xs text-text-muted shrink-0">{track.position}</span>
-        <AlbumArt src={track.thumbnailUrl} className="w-10 h-10" />
+        <AlbumArt src={track.thumbnailUrl} className={dense ? 'w-8 h-8' : 'w-10 h-10'} />
         <div className="flex-1 min-w-0">
           <p className="text-sm truncate">{track.title}</p>
           <p className="text-xs text-text-muted truncate">{track.artist}</p>
@@ -136,6 +138,7 @@ export const TrackRow = memo(function TrackRow({ track, index, tracks, selected,
     prev.track.id === next.track.id &&
     prev.selected === next.selected &&
     prev.index === next.index &&
+    prev.density === next.density &&
     prev.downloadProgress?.status === next.downloadProgress?.status &&
     prev.downloadProgress?.percent === next.downloadProgress?.percent
   )

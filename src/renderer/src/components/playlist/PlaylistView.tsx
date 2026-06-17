@@ -11,7 +11,8 @@ import { ContextMenu } from '../ui/ContextMenu'
 import { TrackDetailModal } from '../ui/TrackDetailModal'
 import { PageHeader } from '../ui/PageHeader'
 import { AlbumArt } from '../ui/AlbumArt'
-import type { Track } from '../../../../shared/models'
+import { useSettingsStore } from '../../store/settingsStore'
+import type { Track, TrackDensity } from '../../../../shared/models'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import wolfIcon from '../../assets/wolf-icon.png'
 import {
@@ -33,6 +34,7 @@ function VirtualizedTrackList({
   tracks,
   selected,
   downloads,
+  density,
   toggleOne,
   handleContextMenu
 }: {
@@ -40,15 +42,21 @@ function VirtualizedTrackList({
   tracks: Track[]
   selected: Set<string>
   downloads: Map<string, import('../../../../shared/models').DownloadProgress>
+  density: TrackDensity
   toggleOne: (id: string) => void
   handleContextMenu: (e: React.MouseEvent, track: Track) => void
 }): JSX.Element {
   const rowVirtualizer = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => trackListRef.current,
-    estimateSize: () => 52,
+    estimateSize: () => (density === 'compact' ? 40 : 52),
     overscan: 5
   })
+
+  // Re-measure when the density setting changes.
+  useEffect(() => {
+    rowVirtualizer.measure()
+  }, [density, rowVirtualizer])
 
   return (
     <div
@@ -81,6 +89,7 @@ function VirtualizedTrackList({
                 index={virtualRow.index}
                 tracks={tracks}
                 selected={selected.has(track.id)}
+                density={density}
                 onToggleSelect={() => toggleOne(track.id)}
                 downloadProgress={downloads.get(track.id)}
                 onContextMenu={handleContextMenu}
@@ -96,6 +105,7 @@ function VirtualizedTrackList({
 export function PlaylistView(): JSX.Element {
   const { currentPlaylist, loading, loadedFromCache, refreshPlaylist } = usePlaylistStore()
   const { startDownload, isDownloading } = useDownload()
+  const density = useSettingsStore((s) => s.settings.trackDensity)
   const downloads = useDownloadStore((s) => s.downloads)
   const clearDownloads = useDownloadStore((s) => s.clear)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -345,6 +355,7 @@ export function PlaylistView(): JSX.Element {
             tracks={currentPlaylist.tracks}
             selected={selected}
             downloads={downloads}
+            density={density}
             toggleOne={toggleOne}
             handleContextMenu={handleContextMenu}
           />
