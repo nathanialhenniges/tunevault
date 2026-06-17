@@ -134,6 +134,17 @@ const api = {
     const handler = (): void => callback()
     ipcRenderer.on('tray:prev', handler)
     return () => ipcRenderer.removeListener('tray:prev', handler)
+  },
+  // App-menu actions (Settings ⌘, / View ▸ Toggle Sidebar ⌘\)
+  onMenuNavigate: (callback: (path: string) => void) => {
+    const handler = (_e: unknown, path: string): void => callback(path)
+    ipcRenderer.on('menu:navigate', handler)
+    return () => ipcRenderer.removeListener('menu:navigate', handler)
+  },
+  onToggleSidebar: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('menu:toggle-sidebar', handler)
+    return () => ipcRenderer.removeListener('menu:toggle-sidebar', handler)
   }
 }
 

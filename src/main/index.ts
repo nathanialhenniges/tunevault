@@ -119,7 +119,6 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.nathanialhenniges.tunevault')
-  buildAppMenu()
 
   // Set About panel for macOS to show TuneVault instead of Electron
   if (process.platform === 'darwin') {
@@ -181,6 +180,7 @@ app.whenReady().then(() => {
   // 1.3 — Register IPC handlers once, not on every window creation
   registerAllIpc(mainWindow)
   createTray(mainWindow)
+  buildAppMenu(mainWindow)
 
   // Media key support
   globalShortcut.register('MediaPlayPause', () => {

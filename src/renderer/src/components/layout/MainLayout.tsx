@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { TitleBar } from './TitleBar'
@@ -14,11 +14,22 @@ export function MainLayout({ children }: MainLayoutProps): JSX.Element {
   const mainRef = useRef<HTMLElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
+  const [sidebarHidden, setSidebarHidden] = useState(false)
 
   // Reset scroll position on route navigation
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
   }, [location.pathname])
+
+  // App-menu actions: Settings (⌘,) navigates, View ▸ Toggle Sidebar (⌘\) hides it.
+  useEffect(() => {
+    const offNav = window.api.onMenuNavigate((path) => navigate(path))
+    const offToggle = window.api.onToggleSidebar(() => setSidebarHidden((h) => !h))
+    return () => {
+      offNav()
+      offToggle()
+    }
+  }, [navigate])
 
   // Cmd/Ctrl+1..5 view navigation
   useEffect(() => {
@@ -38,7 +49,7 @@ export function MainLayout({ children }: MainLayoutProps): JSX.Element {
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      <Sidebar />
+      {!sidebarHidden && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <TitleBar />
         <main ref={mainRef} className="flex-1 overflow-y-auto p-4">
