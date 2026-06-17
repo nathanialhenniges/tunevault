@@ -63,8 +63,10 @@ export function SettingsView(): JSX.Element {
   const [confirmErase, setConfirmErase] = useState(false)
 
   useEffect(() => {
-    const off = window.api.onUpdateStatus(setUpdateStatus)
-    return () => { off() }
+    const unsubscribe = window.api.onUpdateStatus(setUpdateStatus)
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   useEffect(() => {

@@ -49,7 +49,7 @@ export class SyncService {
         return
       }
 
-      const library = LibraryService.load()
+      const library = new LibraryService().load()
       const libraryPlaylistIds = new Set(library.playlists.map((p) => p.id))
 
       for (const playlistId of syncedIds) {
@@ -79,10 +79,10 @@ export class SyncService {
 
   async checkOne(
     playlistId: string,
-    library?: ReturnType<typeof LibraryService.load>
+    library?: ReturnType<LibraryService['load']>
   ): Promise<number> {
     try {
-      const lib = library ?? LibraryService.load()
+      const lib = library ?? new LibraryService().load()
       const existingPlaylist = lib.playlists.find((p) => p.id === playlistId)
       if (!existingPlaylist) return 0
 
