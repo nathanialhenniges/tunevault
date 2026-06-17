@@ -60,8 +60,9 @@ function createWindow(): BrowserWindow {
     title: 'TuneVault',
     icon: getIconPath(),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    // macOS: native window vibrancy (frosted translucency). Others: solid bg.
-    backgroundColor: isMac ? '#00000000' : '#09090b',
+    // macOS vibrancy + Windows 11 Mica both need a transparent backing so the
+    // native material shows through; Linux keeps a solid background.
+    backgroundColor: isMac || isWin ? '#00000000' : '#09090b',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -74,7 +75,9 @@ function createWindow(): BrowserWindow {
   }
   if (isWin) {
     // Native window controls (min/max/close) drawn by the OS into our chrome.
-    opts.titleBarOverlay = { color: '#0f0f12', symbolColor: '#fafafa', height: 48 }
+    opts.titleBarOverlay = { color: '#00000000', symbolColor: '#fafafa', height: 48 }
+    // Win11 Mica material behind the (semi-opaque) content. Ignored on Win10.
+    opts.backgroundMaterial = 'mica'
   }
 
   const mainWindow = new BrowserWindow(opts)

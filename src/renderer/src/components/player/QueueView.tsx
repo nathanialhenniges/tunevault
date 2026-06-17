@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { usePlayerStore } from '../../store/playerStore'
+import { AlbumArt } from '../ui/AlbumArt'
 import { XMarkIcon, Bars3Icon, TrashIcon } from '@heroicons/react/24/outline'
 
 interface QueueViewProps {
@@ -120,13 +121,7 @@ export function QueueView({ open, onClose }: QueueViewProps): JSX.Element | null
                   className="flex items-center gap-3 flex-1 min-w-0"
                 >
                   <span className="text-xs text-text-muted w-5">{i + 1}</span>
-                  <img
-                    src={track.thumbnailUrl}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="w-8 h-8 rounded object-cover bg-bg-surface"
-                  />
+                  <AlbumArt src={track.thumbnailUrl} className="w-8 h-8" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm truncate">{track.title}</p>
                     <p className="text-xs text-text-muted truncate">{track.artist}</p>

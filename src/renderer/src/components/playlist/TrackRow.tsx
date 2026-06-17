@@ -3,6 +3,7 @@ import type { Track, DownloadProgress } from '../../../../shared/models'
 import { formatDuration } from '../../../../shared/utils'
 import { usePlayerStore } from '../../store/playerStore'
 import { Checkbox } from '../ui/Checkbox'
+import { AlbumArt } from '../ui/AlbumArt'
 import { PlayIcon } from '@heroicons/react/24/solid'
 import {
   CheckCircleIcon,
@@ -96,25 +97,20 @@ export const TrackRow = memo(function TrackRow({ track, index, tracks, selected,
         <Checkbox checked={selected ?? false} onChange={onToggleSelect} />
       )}
 
-      <span
-        className="w-6 text-right text-xs text-text-muted cursor-pointer"
+      <button
+        type="button"
         onClick={handlePlay}
+        disabled={!track.filePath}
+        aria-label={track.filePath ? `Play ${track.title}` : track.title}
+        className="flex items-center gap-4 flex-1 min-w-0 text-left"
       >
-        {track.position}
-      </span>
-
-      <img
-        src={track.thumbnailUrl}
-        alt=""
-        className="w-10 h-10 rounded object-cover bg-bg-surface cursor-pointer"
-        onClick={handlePlay}
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-      />
-
-      <div className="flex-1 min-w-0 cursor-pointer" onClick={handlePlay}>
-        <p className="text-sm truncate">{track.title}</p>
-        <p className="text-xs text-text-muted truncate">{track.artist}</p>
-      </div>
+        <span className="w-6 text-right text-xs text-text-muted shrink-0">{track.position}</span>
+        <AlbumArt src={track.thumbnailUrl} className="w-10 h-10" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm truncate">{track.title}</p>
+          <p className="text-xs text-text-muted truncate">{track.artist}</p>
+        </div>
+      </button>
 
       <span className="text-xs text-text-muted">{formatDuration(track.duration)}</span>
 

@@ -38,7 +38,8 @@ export function Sidebar(): JSX.Element {
   return (
     <aside className="relative w-48 glass-chrome glass-border-sidebar flex flex-col transition-colors duration-200">
       <div className="drag-region h-12 flex items-center pl-[72px] pr-4 border-b border-[var(--glass-border-edge)]">
-        <h1 className="text-sm font-bold tracking-wide text-accent no-drag font-display">TuneVault</h1>
+        {/* Wordmark, not a document heading — the per-view PageHeader owns the h1. */}
+        <div className="text-[15px] font-semibold tracking-tight text-text-primary no-drag font-display">TuneVault</div>
       </div>
 
       <nav className="flex-1 min-h-0 py-2 px-2">

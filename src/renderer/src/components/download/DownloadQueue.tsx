@@ -4,6 +4,7 @@ import { usePlaylistStore } from '../../store/playlistStore'
 import { useDownload } from '../../hooks/useDownload'
 import { DownloadItem } from './DownloadItem'
 import { Modal } from '../ui/Modal'
+import { PageHeader } from '../ui/PageHeader'
 import { ArrowPathIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 
 export function DownloadQueue(): JSX.Element {
@@ -36,57 +37,60 @@ export function DownloadQueue(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold font-display tracking-tight">Downloads</h2>
-          {entries.length > 0 && (
-            <p className="text-sm text-text-secondary mt-1">
+      <PageHeader
+        title="Downloads"
+        subtitle={
+          entries.length > 0 ? (
+            <>
               {doneCount} of {entries.length} complete
               {skippedCount > 0 && ` · ${skippedCount} skipped`}
               {errorCount > 0 && ` · ${errorCount} failed`}
-            </p>
-          )}
-        </div>
+            </>
+          ) : undefined
+        }
+        actions={
+          (isDownloading ? activeCount > 0 : entries.length > 0) ? (
+          <>
+            {isDownloading && activeCount > 0 && (
+              <button
+                onClick={cancelAll}
+                className="px-4 py-2 text-sm text-red-600 dark:text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
+              >
+                Cancel All
+              </button>
+            )}
 
-        <div className="flex items-center gap-2">
-          {isDownloading && activeCount > 0 && (
-            <button
-              onClick={cancelAll}
-              className="px-4 py-2 text-sm text-red-600 dark:text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
-            >
-              Cancel All
-            </button>
-          )}
+            {!isDownloading && entries.length > 0 && playlist && (
+              <button
+                onClick={() => setShowRedownloadConfirm(true)}
+                className="px-3 py-1.5 text-xs text-text-secondary hover:text-accent border border-border-default rounded-lg hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5"
+              >
+                <ArrowPathIcon className="w-3.5 h-3.5" />
+                Redownload All
+              </button>
+            )}
 
-          {!isDownloading && entries.length > 0 && playlist && (
-            <button
-              onClick={() => setShowRedownloadConfirm(true)}
-              className="px-3 py-1.5 text-xs text-text-secondary hover:text-accent border border-border-default rounded-lg hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5"
-            >
-              <ArrowPathIcon className="w-3.5 h-3.5" />
-              Redownload All
-            </button>
-          )}
-
-          {!isDownloading && entries.length > 0 && (
-            <button
-              onClick={clear}
-              className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
+            {!isDownloading && entries.length > 0 && (
+              <button
+                onClick={clear}
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
+              >
+                Clear
+              </button>
+            )}
+          </>
+          ) : undefined
+        }
+      />
 
       {entries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-          <div className="relative mb-3">
-            <div className="absolute inset-0 rounded-full blur-xl opacity-30" style={{ background: 'var(--accent)' }} />
-            <ArrowDownTrayIcon className="relative w-12 h-12 opacity-30" style={{ animation: 'textPulse 2s ease-in-out infinite' }} />
+        <div className="flex flex-col items-center justify-center text-center py-20">
+          <div className="relative mb-4">
+            <div className="absolute inset-0 rounded-full blur-2xl opacity-25" style={{ background: 'var(--accent)' }} />
+            <ArrowDownTrayIcon className="relative w-12 h-12 text-accent opacity-80" />
           </div>
-          <p className="text-lg font-display">No downloads in progress</p>
-          <p className="text-sm mt-1">Fetch a playlist and click "Download All" to start</p>
+          <p className="text-base font-medium text-text-primary">No downloads in progress</p>
+          <p className="text-sm text-text-secondary mt-1 max-w-xs">Fetch a playlist and click “Download All” to start.</p>
         </div>
       ) : (
         <div className="space-y-1">

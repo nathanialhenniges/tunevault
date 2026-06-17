@@ -1,6 +1,7 @@
 import type { Track } from '../../../../shared/models'
 import { formatDuration } from '../../../../shared/utils'
 import { Modal } from './Modal'
+import { AlbumArt } from './AlbumArt'
 import {
   XMarkIcon,
   ClockIcon,
@@ -20,12 +21,7 @@ export function TrackDetailModal({ track, onClose }: TrackDetailModalProps): JSX
     <Modal open={true} onClose={onClose} className="max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
       {/* Header */}
       <div className="flex items-start gap-4 p-6 pb-4">
-        <img
-          src={track.thumbnailUrl}
-          alt=""
-          className="w-16 h-16 rounded-lg object-cover bg-bg-inset shrink-0"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
+        <AlbumArt src={track.thumbnailUrl} alt={track.title} className="w-16 h-16" radius="0.5rem" />
         <div className="flex-1 min-w-0">
           <h2 id="track-detail-title" className="text-lg font-semibold truncate">{track.title}</h2>
           <p className="text-sm text-text-secondary truncate">{track.artist}</p>

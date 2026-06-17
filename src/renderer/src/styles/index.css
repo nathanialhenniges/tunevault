@@ -42,6 +42,18 @@ select:focus-visible,
   border-radius: 4px;
 }
 
+/* ── Native cursor: desktop controls use the arrow; the hand pointer is for
+   real (external) hyperlinks only. The web reflex of cursor:pointer on every
+   button is one of the loudest "this is a website" tells. ──── */
+button,
+[role="button"],
+select,
+label,
+summary,
+a:not([href^="http"]) {
+  cursor: default;
+}
+
 /* ── Light theme (default) ───────────────────────────────── */
 :root {
   --accent: #ea580c;
@@ -99,8 +111,8 @@ select:focus-visible,
   --seek-track-bg: rgba(0, 0, 0, 0.08);
   --seek-track-hover: rgba(0, 0, 0, 0.12);
 
-  /* Display font */
-  --font-display: 'DM Sans Variable', 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Display font — editorial variable serif, used only on the sidebar wordmark */
+  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
 }
 
 /* ── Obsidian dark theme ─────────────────────────────────── */
@@ -159,7 +171,7 @@ select:focus-visible,
   --seek-track-bg: rgba(255, 255, 255, 0.06);
   --seek-track-hover: rgba(255, 255, 255, 0.1);
 
-  --font-display: 'DM Sans Variable', 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
 }
 
 /* ── Accent color ── orange is the default; blue is opt-in via Settings.
@@ -180,9 +192,11 @@ select:focus-visible,
 
 body {
   margin: 0;
+  /* Platform system UI font: SF Pro on macOS, Segoe UI Variable on Win11 — the
+     app reads native on each OS rather than shipping a custom UI typeface. */
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
   overflow: hidden;
@@ -201,7 +215,17 @@ body {
   opacity: 0.6;
 }
 
-/* Ambient gradient — gives backdrop-blur visual content */
+/* Windows 11 Mica: the window backing is translucent so the desktop tint shows
+   through the chrome. Keep the content plane mostly opaque so text stays
+   readable (same trade-off as the macOS vibrancy backing). */
+.is-win body {
+  background-color: color-mix(in srgb, var(--bg-base) 88%, transparent);
+}
+
+/* Ambient tint — a faint STATIC accent wash so the backdrop-blur chrome has
+   something to pick up, without the battery/compositor cost of an animated,
+   larger-than-viewport layer (a desktop app pays no such tax for decoration).
+   Depth comes from layered surfaces + hairline borders + shadows, not motion. */
 body::before {
   content: '';
   position: fixed;
@@ -209,16 +233,16 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 20% 90%, rgba(var(--accent-rgb), 0.06) 0%, transparent 70%),
-    radial-gradient(ellipse 60% 50% at 80% 10%, rgba(var(--accent-rgb), 0.04) 0%, transparent 70%);
+    radial-gradient(ellipse 55% 50% at 12% 92%, rgba(var(--accent-rgb), 0.05) 0%, transparent 62%),
+    radial-gradient(ellipse 50% 45% at 88% 6%, rgba(var(--accent-rgb), 0.035) 0%, transparent 64%);
   transition: background 0.3s ease;
 }
 
 /* ── Glass utility classes ───────────────────────────────── */
 .glass-chrome {
   background: var(--glass-sidebar-bg);
-  backdrop-filter: blur(var(--glass-blur-chrome));
-  -webkit-backdrop-filter: blur(var(--glass-blur-chrome));
+  backdrop-filter: blur(var(--glass-blur-chrome)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-chrome)) saturate(180%);
   box-shadow: var(--shadow-glass-sm);
 }
 
@@ -233,15 +257,15 @@ body::before {
 
 .glass-float {
   background: var(--glass-float-bg);
-  backdrop-filter: blur(var(--glass-blur-float));
-  -webkit-backdrop-filter: blur(var(--glass-blur-float));
+  backdrop-filter: blur(var(--glass-blur-float)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-float)) saturate(180%);
   box-shadow: var(--shadow-glass-lg);
 }
 
 .glass-modal {
   background: var(--glass-modal-bg);
-  backdrop-filter: blur(var(--glass-blur-modal));
-  -webkit-backdrop-filter: blur(var(--glass-blur-modal));
+  backdrop-filter: blur(var(--glass-blur-modal)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-modal)) saturate(180%);
   box-shadow: var(--shadow-glass-xl);
   border: 1px solid var(--glass-border-light);
 }
@@ -260,6 +284,27 @@ body::before {
 .glass-border-float {
   border: 1px solid var(--glass-border-edge);
   box-shadow: var(--shadow-glass-lg), inset 0 1px 0 var(--glass-border-light);
+}
+
+/* Respect the system "Reduce transparency" setting — drop the blur and go solid
+   so the material never costs legibility for users who opted out. Placed AFTER
+   the .glass-* base rules so it wins on source order. The [style] backstop with
+   !important also neutralizes the handful of inline backdrop-filter surfaces
+   (sticky headers, inputs, dropdowns, modal overlay) that don't use these classes. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-chrome,
+  .glass-float,
+  .glass-modal {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-raised);
+  }
+  [style*="backdrop-filter"],
+  [style*="backdropFilter"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  body::before { display: none; }
 }
 
 /* Seek / volume track styling */
@@ -476,9 +521,15 @@ body::before {
   -webkit-app-region: no-drag;
 }
 
-/* Display font utility */
+/* Display font utility — the editorial serif flourish, used only on the wordmark */
 .font-display {
   font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+.text-balance {
+  text-wrap: balance;
 }
 
 /* Button press micro-interaction */

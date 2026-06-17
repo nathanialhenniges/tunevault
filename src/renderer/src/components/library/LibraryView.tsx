@@ -3,6 +3,7 @@ import { useLibraryStore } from '../../store/libraryStore'
 import { useShallow } from 'zustand/react/shallow'
 import { SearchBar } from './SearchBar'
 import { TrackList } from './TrackList'
+import { PageHeader } from '../ui/PageHeader'
 import {
   ArrowPathIcon,
   TrashIcon,
@@ -93,18 +94,19 @@ export function LibraryView(): JSX.Element {
     <div className="flex flex-col flex-1 min-h-0 space-y-5">
       {/* Header */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-semibold font-display tracking-tight">Library</h2>
-            <p className="text-sm text-text-secondary mt-1">
-              {tracks.length} tracks · {library.playlists.length} playlists
-            </p>
-          </div>
-          <SearchBar />
-        </div>
+        <PageHeader
+          title="Library"
+          subtitle={
+            <>
+              {tracks.length} track{tracks.length === 1 ? '' : 's'} ·{' '}
+              {library.playlists.length} playlist{library.playlists.length === 1 ? '' : 's'}
+            </>
+          }
+          actions={<SearchBar />}
+        />
 
         {/* Toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap mt-5">
           <button
             onClick={load}
             className="px-3 py-1.5 text-xs text-text-secondary hover:text-accent border border-border-default rounded-lg hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5"
@@ -164,7 +166,7 @@ export function LibraryView(): JSX.Element {
               <select
                 value={playlistFilter}
                 onChange={(e) => setPlaylistFilter(e.target.value)}
-                className="appearance-none border border-[var(--glass-border-edge)] rounded-lg px-3 py-1.5 pr-7 text-xs text-text-secondary hover:text-text-primary focus:outline-none focus:border-accent cursor-pointer transition"
+                className="appearance-none border border-[var(--glass-border-edge)] rounded-lg px-3 py-1.5 pr-7 text-xs text-text-secondary hover:text-text-primary focus:outline-none focus:border-accent transition"
                 style={{ background: 'var(--glass-input-bg)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
               >
                 <option value="all">All Playlists</option>
@@ -215,7 +217,7 @@ export function LibraryView(): JSX.Element {
                       toggleDevicePlaylist(d.id, playlistFilter)
                       toast.success(has ? `Removed from ${d.name}` : `Added to ${d.name}`)
                     }}
-                    className="appearance-none border border-[var(--glass-border-edge)] rounded-lg px-3 py-1.5 pr-7 text-xs text-text-secondary hover:text-text-primary focus:outline-none focus:border-accent cursor-pointer transition"
+                    className="appearance-none border border-[var(--glass-border-edge)] rounded-lg px-3 py-1.5 pr-7 text-xs text-text-secondary hover:text-text-primary focus:outline-none focus:border-accent transition"
                     style={{ background: 'var(--glass-input-bg)' }}
                     title="Add this playlist to a device"
                   >
@@ -310,13 +312,13 @@ export function LibraryView(): JSX.Element {
       ))}
 
       {tracks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-          <div className="relative mb-3">
-            <div className="absolute inset-0 rounded-full blur-xl opacity-30" style={{ background: 'var(--accent)' }} />
-            <MusicalNoteIcon className="relative w-12 h-12 opacity-30" style={{ animation: 'textPulse 2s ease-in-out infinite' }} />
+        <div className="flex flex-col items-center justify-center text-center py-20">
+          <div className="relative mb-4">
+            <div className="absolute inset-0 rounded-full blur-2xl opacity-25" style={{ background: 'var(--accent)' }} />
+            <MusicalNoteIcon className="relative w-12 h-12 text-accent opacity-80" />
           </div>
-          <p className="text-lg font-display">Your library is empty</p>
-          <p className="text-sm mt-1">Download some playlists to get started</p>
+          <p className="text-base font-medium text-text-primary">Your library is empty</p>
+          <p className="text-sm text-text-secondary mt-1 max-w-xs">Download some playlists to get started.</p>
         </div>
       ) : (
         <TrackList tracks={tracks} />

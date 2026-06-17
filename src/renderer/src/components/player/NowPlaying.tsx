@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { usePlayerStore } from '../../store/playerStore'
+import { AlbumArt } from '../ui/AlbumArt'
 import { MusicalNoteIcon } from '@heroicons/react/24/outline'
 
 export const NowPlaying = memo(function NowPlaying(): JSX.Element {
@@ -23,12 +24,12 @@ export const NowPlaying = memo(function NowPlaying(): JSX.Element {
           className="absolute inset-0 rounded-lg blur-md opacity-40"
           style={{ background: 'var(--accent)' }}
         />
-        <img
+        <AlbumArt
           src={track.thumbnailUrl}
           alt={track.title}
-          className="relative w-12 h-12 rounded-lg object-cover bg-bg-surface"
+          className="relative w-12 h-12"
+          radius="0.5rem"
           style={{ boxShadow: '0 4px 16px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.1)' }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
         />
       </div>
       <div className="min-w-0">

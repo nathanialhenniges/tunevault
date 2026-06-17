@@ -9,8 +9,11 @@ import { Checkbox } from '../ui/Checkbox'
 import { PlaylistLoader } from '../ui/PlaylistLoader'
 import { ContextMenu } from '../ui/ContextMenu'
 import { TrackDetailModal } from '../ui/TrackDetailModal'
+import { PageHeader } from '../ui/PageHeader'
+import { AlbumArt } from '../ui/AlbumArt'
 import type { Track } from '../../../../shared/models'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import wolfIcon from '../../assets/wolf-icon.png'
 import {
   ArrowPathIcon,
   ClockIcon,
@@ -183,25 +186,45 @@ export function PlaylistView(): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 font-display tracking-tight">Fetch Playlist</h2>
-        <PlaylistInput />
-      </div>
+      {!currentPlaylist && !loading ? (
+        /* ── Empty state — native start screen: app glyph anchor + one serif line ── */
+        <div className="relative flex-1 flex flex-col items-center justify-center text-center px-4 -mt-4">
+          <div className="relative w-full max-w-md">
+            <img
+              src={wolfIcon}
+              alt=""
+              aria-hidden
+              className="w-14 h-14 mx-auto mb-5 opacity-90 select-none"
+              style={{ filter: 'drop-shadow(0 4px 14px rgba(var(--accent-rgb), 0.25))' }}
+            />
+            <h1
+              className="text-balance font-semibold text-text-primary"
+              style={{ fontSize: '1.9rem', letterSpacing: '-0.02em' }}
+            >
+              Add music to your vault
+            </h1>
+            <p className="mt-3 mb-7 text-sm text-text-secondary text-balance">
+              Paste a YouTube or Apple Music link — every track is fetched, tagged
+              with artwork, and filed into your library.
+            </p>
+            <PlaylistInput />
+            <p className="mt-4 text-xs text-text-muted">
+              Supports YouTube, Apple Music, and SoundCloud links.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <PageHeader title="Fetch a playlist" />
+          <div className="mt-4">
+            <PlaylistInput />
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 300px)' }}>
           <PlaylistLoader wolfMode={wolfMode} />
-        </div>
-      )}
-
-      {!loading && !currentPlaylist && (
-        <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-          <div className="relative mb-3">
-            <div className="absolute inset-0 rounded-full blur-xl opacity-30" style={{ background: 'var(--accent)' }} />
-            <MusicalNoteIcon className="relative w-12 h-12 opacity-30" style={{ animation: 'textPulse 2s ease-in-out infinite' }} />
-          </div>
-          <p className="text-base font-display">Paste a YouTube or Apple Music playlist URL to get started</p>
-          <p className="text-sm mt-1 opacity-60">Your tracks will appear here</p>
         </div>
       )}
 
@@ -235,17 +258,15 @@ export function PlaylistView(): JSX.Element {
           {/* Playlist header — sticky */}
           <div className="sticky top-0 z-10 pb-2" style={{ background: 'var(--glass-sidebar-bg)', backdropFilter: 'blur(var(--glass-blur-chrome))', WebkitBackdropFilter: 'blur(var(--glass-blur-chrome))' }}>
             <div className="flex items-center gap-4">
-              <img
+              <AlbumArt
                 src={currentPlaylist.thumbnailUrl}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="w-16 h-16 object-cover"
-                style={{ borderRadius: 'var(--radius-card)', boxShadow: 'var(--shadow-glass-lg)' }}
+                className="w-16 h-16"
+                radius="var(--radius-card)"
+                style={{ boxShadow: 'var(--shadow-glass-lg)' }}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-semibold truncate">{currentPlaylist.title}</h3>
+                  <h2 className="text-lg font-semibold truncate">{currentPlaylist.title}</h2>
                   {loadedFromCache && (
                     <span className="text-[10px] text-text-muted px-1.5 py-0.5 bg-glass-hover border border-[var(--glass-border-edge)] rounded shrink-0">cached</span>
                   )}
@@ -295,7 +316,7 @@ export function PlaylistView(): JSX.Element {
               <button
                 type="button"
                 onClick={toggleAll}
-                className="flex items-center gap-2 text-xs text-text-muted cursor-pointer select-none hover:text-text-secondary transition"
+                className="flex items-center gap-2 text-xs text-text-muted select-none hover:text-text-secondary transition"
               >
                 <Checkbox checked={allSelected} onChange={toggleAll} />
                 {allSelected ? 'Deselect all' : 'Select all'}

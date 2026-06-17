@@ -7,6 +7,7 @@ import { useLibraryStore, type SortField } from '../../store/libraryStore'
 import { Checkbox } from '../ui/Checkbox'
 import { ContextMenu } from '../ui/ContextMenu'
 import { TrackDetailModal } from '../ui/TrackDetailModal'
+import { AlbumArt } from '../ui/AlbumArt'
 import {
   FolderOpenIcon,
   TrashIcon,
@@ -71,14 +72,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
         onClick={() => onPlay(index)}
         className="flex items-center gap-3 flex-1 min-w-0 text-left"
       >
-        <img
-          src={track.thumbnailUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="w-9 h-9 rounded object-cover bg-bg-surface"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
+        <AlbumArt src={track.thumbnailUrl} className="w-9 h-9" />
         <div className="min-w-0">
           <p className="text-sm truncate">{track.title}</p>
           <p className="text-xs text-text-muted truncate">{track.artist}</p>
