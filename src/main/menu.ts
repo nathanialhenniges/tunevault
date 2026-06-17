@@ -1,19 +1,75 @@
-import { Menu, shell } from 'electron'
+import { Menu, shell, app, BrowserWindow } from 'electron'
 
 /**
- * Native role-based application menu. Roles give OS-native, localized items
- * (copy/paste/minimize/zoom/reload/devtools/…). The appMenu role labels its
- * items from app.name ("About TuneVault", "Quit TuneVault"). On macOS the bold
- * first-menu title is still bundle-derived in dev ("Electron"); the packaged
- * app shows TuneVault via productName.
+ * Native application menu. Mostly role-based (OS-native, localized items for
+ * copy/paste/reload/zoom/…), plus two app-specific items wired to the renderer
+ * over IPC: Settings (⌘,) and View ▸ Toggle Sidebar (⌘\). The menu accelerators
+ * double as the global keyboard shortcuts.
  */
-export function buildAppMenu(): void {
+export function buildAppMenu(mainWindow: BrowserWindow): void {
   const isMac = process.platform === 'darwin'
+  const send = (channel: string, ...args: unknown[]): void => {
+    mainWindow.webContents.send(channel, ...args)
+  }
+
+  const settingsItem: Electron.MenuItemConstructorOptions = {
+    label: 'Settings…',
+    accelerator: 'CmdOrCtrl+,',
+    click: () => send('menu:navigate', '/settings')
+  }
+
+  const toggleSidebarItem: Electron.MenuItemConstructorOptions = {
+    label: 'Toggle Sidebar',
+    accelerator: 'CmdOrCtrl+\\',
+    click: () => send('menu:toggle-sidebar')
+  }
+
   const template: Electron.MenuItemConstructorOptions[] = [
-    ...(isMac ? ([{ role: 'appMenu' }] as Electron.MenuItemConstructorOptions[]) : []),
-    { role: 'fileMenu' },
+    ...(isMac
+      ? ([
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              { type: 'separator' },
+              settingsItem,
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' }
+            ]
+          }
+        ] as Electron.MenuItemConstructorOptions[])
+      : []),
+    ...(isMac
+      ? ([{ role: 'fileMenu' }] as Electron.MenuItemConstructorOptions[])
+      : ([
+          {
+            label: 'File',
+            submenu: [settingsItem, { type: 'separator' }, { role: 'quit' }]
+          }
+        ] as Electron.MenuItemConstructorOptions[])),
     { role: 'editMenu' },
-    { role: 'viewMenu' },
+    {
+      label: 'View',
+      submenu: [
+        toggleSidebarItem,
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
     { role: 'windowMenu' },
     {
       role: 'help',

@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { DownloadProgress, Track } from '../../../../shared/models'
 import { ProgressBar } from './ProgressBar'
+import { AlbumArt } from '../ui/AlbumArt'
 import { useDownloadStore } from '../../store/downloadStore'
 import { XMarkIcon } from '@heroicons/react/24/outline'
 
@@ -27,14 +28,7 @@ export const DownloadItem = memo(function DownloadItem({ track, progress }: Down
 
   return (
     <div className="flex items-center gap-4 px-4 py-3 rounded-[var(--radius-item)] hover:bg-glass-hover transition group">
-      <img
-        src={track.thumbnailUrl}
-        alt=""
-        loading="lazy"
-        decoding="async"
-        className="w-10 h-10 rounded object-cover bg-bg-surface"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-      />
+      <AlbumArt src={track.thumbnailUrl} className="w-10 h-10" />
 
       <div className="flex-1 min-w-0 space-y-1.5">
         <div className="flex items-center justify-between">

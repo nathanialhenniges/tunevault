@@ -1,12 +1,15 @@
-import { useState, useCallback, useRef, memo } from 'react'
+import { useState, useCallback, useRef, useEffect, memo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Track } from '../../../../shared/models'
 import { formatDuration } from '../../../../shared/utils'
 import { usePlayerStore } from '../../store/playerStore'
 import { useLibraryStore, type SortField } from '../../store/libraryStore'
+import { useSettingsStore } from '../../store/settingsStore'
+import type { TrackDensity } from '../../../../shared/models'
 import { Checkbox } from '../ui/Checkbox'
 import { ContextMenu } from '../ui/ContextMenu'
 import { TrackDetailModal } from '../ui/TrackDetailModal'
+import { AlbumArt } from '../ui/AlbumArt'
 import {
   FolderOpenIcon,
   TrashIcon,
@@ -26,6 +29,7 @@ interface LibraryTrackRowProps {
   index: number
   isCurrent: boolean
   isSelected: boolean
+  density: TrackDensity
   confirmDeleteId: string | null
   onPlay: (index: number) => void
   onToggleSelection: (id: string, index: number) => void
@@ -37,9 +41,10 @@ interface LibraryTrackRowProps {
 }
 
 const LibraryTrackRow = memo(function LibraryTrackRow({
-  track, index, isCurrent, isSelected, confirmDeleteId,
+  track, index, isCurrent, isSelected, density, confirmDeleteId,
   onPlay, onToggleSelection, onShiftSelect, onConfirmDelete, onDeleteOne, onOpenFolder, onContextMenu
 }: LibraryTrackRowProps) {
+  const dense = density === 'compact'
   const handleCheckboxClick = (e: React.MouseEvent): void => {
     e.stopPropagation()
     if (e.shiftKey) {
@@ -52,7 +57,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
   return (
     <div
       onContextMenu={(e) => onContextMenu(e, track)}
-      className={`flex items-center gap-4 px-4 py-2.5 rounded-[var(--radius-item)] transition group ${
+      className={`flex items-center gap-4 px-4 ${dense ? 'py-1' : 'py-2.5'} rounded-[var(--radius-item)] transition group ${
         isCurrent
           ? 'bg-accent/10 text-accent border-l-2 border-accent'
           : 'hover:bg-glass-hover hover:translate-x-0.5'
@@ -71,14 +76,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
         onClick={() => onPlay(index)}
         className="flex items-center gap-3 flex-1 min-w-0 text-left"
       >
-        <img
-          src={track.thumbnailUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="w-9 h-9 rounded object-cover bg-bg-surface"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
+        <AlbumArt src={track.thumbnailUrl} className={dense ? 'w-8 h-8' : 'w-9 h-9'} />
         <div className="min-w-0">
           <p className="text-sm truncate">{track.title}</p>
           <p className="text-xs text-text-muted truncate">{track.artist}</p>
@@ -139,6 +137,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
     prev.isCurrent === next.isCurrent &&
     prev.isSelected === next.isSelected &&
     prev.index === next.index &&
+    prev.density === next.density &&
     prev.confirmDeleteId === next.confirmDeleteId
   )
 })
@@ -176,14 +175,20 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; track: Track } | null>(null)
   const [detailTrack, setDetailTrack] = useState<Track | null>(null)
+  const density = useSettingsStore((s) => s.settings.trackDensity)
   const parentRef = useRef<HTMLDivElement>(null)
 
   const rowVirtualizer = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 50,
+    estimateSize: () => (density === 'compact' ? 38 : 50),
     overscan: 5
   })
+
+  // Re-measure when the density setting changes.
+  useEffect(() => {
+    rowVirtualizer.measure()
+  }, [density, rowVirtualizer])
 
   const handlePlay = useCallback((index: number): void => {
     setQueue(tracks, index)
@@ -257,6 +262,7 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
                   index={virtualRow.index}
                   isCurrent={currentTrackId === track.id}
                   isSelected={selectedTrackIds.has(track.id)}
+                  density={density}
                   confirmDeleteId={confirmDeleteId}
                   onPlay={handlePlay}
                   onToggleSelection={handleToggleSelection}

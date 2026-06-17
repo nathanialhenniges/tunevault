@@ -3,6 +3,7 @@ import { useLibraryStore } from '../../store/libraryStore'
 import { useSettingsStore } from '../../store/settingsStore'
 import { toast } from '../../store/toastStore'
 import { Modal } from '../ui/Modal'
+import { PageHeader } from '../ui/PageHeader'
 import type { Device } from '../../../../shared/models'
 import {
   DevicePhoneMobileIcon,
@@ -69,28 +70,36 @@ export function DeviceView(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold font-display tracking-tight flex items-center gap-2">
-            <DevicePhoneMobileIcon className="w-6 h-6" /> Devices
-          </h2>
-          <p className="text-sm text-text-secondary mt-1">
-            Create a device, assign playlists to it, then Sync to mirror them into its folder — drag
-            that into iTunes to sync your iPod.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowNew(true)}
-          className="btn-accent px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 shrink-0"
-        >
-          <PlusIcon className="w-4 h-4" /> New Device
-        </button>
-      </div>
+      <PageHeader
+        title="Devices"
+        subtitle="Create a device, assign playlists to it, then Sync to mirror them into its folder — drag that into iTunes to sync your iPod."
+        actions={
+          <button
+            onClick={() => setShowNew(true)}
+            className="btn-accent px-4 py-2 rounded-lg text-sm flex items-center gap-1.5 shrink-0"
+          >
+            <PlusIcon className="w-4 h-4" /> New Device
+          </button>
+        }
+      />
 
       {devices.length === 0 ? (
-        <p className="text-sm text-text-secondary">
-          No devices yet. Create one to start assigning playlists and syncing.
-        </p>
+        <div className="flex flex-col items-center justify-center text-center py-20">
+          <div className="relative mb-4">
+            <div className="absolute inset-0 rounded-full blur-2xl opacity-25" style={{ background: 'var(--accent)' }} />
+            <DevicePhoneMobileIcon className="relative w-12 h-12 text-accent opacity-80" />
+          </div>
+          <p className="text-base font-medium text-text-primary">No devices yet</p>
+          <p className="text-sm text-text-secondary mt-1 max-w-xs">
+            Create one to start assigning playlists and syncing to your iPod.
+          </p>
+          <button
+            onClick={() => setShowNew(true)}
+            className="btn-accent px-4 py-2 mt-5 rounded-lg text-sm flex items-center gap-1.5"
+          >
+            <PlusIcon className="w-4 h-4" /> New Device
+          </button>
+        </div>
       ) : (
         <div className="space-y-4">
           {devices.map((device) => {
@@ -176,7 +185,7 @@ export function DeviceView(): JSX.Element {
       )}
 
       <Modal open={showNew} onClose={() => setShowNew(false)} className="w-[26rem] p-5">
-        <h3 className="text-base font-semibold font-display mb-1">New Device</h3>
+        <h3 className="text-base font-semibold mb-1">New Device</h3>
         <p className="text-xs text-text-secondary mb-4">
           Creates a folder under <code>TuneVault/Devices/</code>.
         </p>
@@ -209,7 +218,7 @@ export function DeviceView(): JSX.Element {
       </Modal>
 
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} className="w-[26rem] p-5">
-        <h3 className="text-base font-semibold font-display mb-1">Delete Device</h3>
+        <h3 className="text-base font-semibold mb-1">Delete Device</h3>
         <p className="text-xs text-text-secondary mb-4 break-all">
           Permanently deletes the folder and everything in it:
           <br />

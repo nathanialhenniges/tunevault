@@ -1,9 +1,11 @@
 import { memo } from 'react'
 import { usePlayerStore } from '../../store/playerStore'
+import { AlbumArt } from '../ui/AlbumArt'
 import { MusicalNoteIcon } from '@heroicons/react/24/outline'
 
 export const NowPlaying = memo(function NowPlaying(): JSX.Element {
   const track = usePlayerStore((s) => s.currentTrack)
+  const isPlaying = usePlayerStore((s) => s.isPlaying)
 
   if (!track) {
     return (
@@ -21,15 +23,33 @@ export const NowPlaying = memo(function NowPlaying(): JSX.Element {
       <div className="relative shrink-0">
         <div
           className="absolute inset-0 rounded-lg blur-md opacity-40"
-          style={{ background: 'var(--accent)' }}
+          style={{ background: 'rgb(var(--np-rgb, var(--accent-rgb)))' }}
         />
-        <img
+        <AlbumArt
           src={track.thumbnailUrl}
           alt={track.title}
-          className="relative w-12 h-12 rounded-lg object-cover bg-bg-surface"
+          className="relative w-12 h-12"
+          radius="0.5rem"
           style={{ boxShadow: '0 4px 16px rgba(0,0,0,0.15), 0 1px 4px rgba(0,0,0,0.1)' }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
         />
+        {isPlaying && (
+          <div
+            aria-hidden
+            className="absolute bottom-0.5 right-0.5 flex items-end gap-[2px] px-1 py-0.5 rounded-md"
+            style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)' }}
+          >
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="w-[2px] h-2 rounded-full origin-bottom"
+                style={{
+                  background: '#fff',
+                  animation: `equalizerPulse 0.9s ease-in-out ${i * 0.16}s infinite`
+                }}
+              />
+            ))}
+          </div>
+        )}
       </div>
       <div className="min-w-0">
         <p className="text-sm font-medium truncate">{track.title}</p>

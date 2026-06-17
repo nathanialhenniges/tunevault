@@ -7,6 +7,7 @@ import { buildAppMenu } from './menu'
 import { createTray } from './tray'
 import { abortAllDownloads, hasActiveDownloads } from './ipc/download.ipc'
 import { SettingsService } from './services/settings.service'
+import { CacheService } from './services/cache.service'
 
 function getIconPath(): string {
   return is.dev
@@ -44,6 +45,16 @@ protocol.registerSchemesAsPrivileged([
       supportFetchAPI: true,
       stream: true
     }
+  },
+  {
+    // Proxy-cache for remote thumbnails: load fast, work offline.
+    scheme: 'tvcache',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true
+    }
   }
 ])
 
@@ -60,8 +71,9 @@ function createWindow(): BrowserWindow {
     title: 'TuneVault',
     icon: getIconPath(),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    // macOS: native window vibrancy (frosted translucency). Others: solid bg.
-    backgroundColor: isMac ? '#00000000' : '#09090b',
+    // macOS vibrancy + Windows 11 Mica both need a transparent backing so the
+    // native material shows through; Linux keeps a solid background.
+    backgroundColor: isMac || isWin ? '#00000000' : '#09090b',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -74,7 +86,9 @@ function createWindow(): BrowserWindow {
   }
   if (isWin) {
     // Native window controls (min/max/close) drawn by the OS into our chrome.
-    opts.titleBarOverlay = { color: '#0f0f12', symbolColor: '#fafafa', height: 48 }
+    opts.titleBarOverlay = { color: '#00000000', symbolColor: '#fafafa', height: 48 }
+    // Win11 Mica material behind the (semi-opaque) content. Ignored on Win10.
+    opts.backgroundMaterial = 'mica'
   }
 
   const mainWindow = new BrowserWindow(opts)
@@ -116,7 +130,6 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.nathanialhenniges.tunevault')
-  buildAppMenu()
 
   // Set About panel for macOS to show TuneVault instead of Electron
   if (process.platform === 'darwin') {
@@ -154,6 +167,22 @@ app.whenReady().then(() => {
     })
   })
 
+  // tvcache://img/<encodeURIComponent(remoteUrl)> — serve a remote thumbnail from
+  // the local disk cache, fetching + storing it on a miss. 404 on miss while
+  // offline so <AlbumArt> falls back to its gradient placeholder.
+  protocol.handle('tvcache', async (request) => {
+    try {
+      const u = new URL(request.url)
+      const remote = decodeURIComponent(u.pathname.replace(/^\/+/, ''))
+      if (!/^https?:\/\//.test(remote)) return new Response('Bad request', { status: 400 })
+      const file = await CacheService.getArtFile(remote)
+      if (!file) return new Response('Not found', { status: 404 })
+      return net.fetch(pathToFileURL(file).href)
+    } catch {
+      return new Response('Bad request', { status: 400 })
+    }
+  })
+
   // Set dock icon in dev mode (production uses electron-builder config)
   if (process.platform === 'darwin') {
     const iconPath = is.dev
@@ -178,6 +207,7 @@ app.whenReady().then(() => {
   // 1.3 — Register IPC handlers once, not on every window creation
   registerAllIpc(mainWindow)
   createTray(mainWindow)
+  buildAppMenu(mainWindow)
 
   // Media key support
   globalShortcut.register('MediaPlayPause', () => {

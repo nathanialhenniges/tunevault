@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import '@fontsource-variable/dm-sans'
+// Fraunces (self-hosted, local) is the single editorial flourish — used only on
+// the sidebar wordmark. Everything else is the platform system font (native).
+import '@fontsource-variable/fraunces'
 import App from './App'
 import './styles/index.css'
 

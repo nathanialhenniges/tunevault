@@ -119,6 +119,16 @@ const api = {
     return () => ipcRenderer.removeListener(IpcChannels.UPDATE_STATUS, handler)
   },
 
+  // Cache & data
+  extractColor: (url: string): Promise<{ r: number; g: number; b: number } | null> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_EXTRACT_COLOR, url),
+  getCacheStats: (): Promise<{ bytes: number; files: number }> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_STATS),
+  clearCache: (): Promise<{ bytes: number; files: number }> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_CLEAR),
+  clearAllData: (): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_CLEAR_ALL_DATA),
+
   // Tray / media key events
   onTrayTogglePlay: (callback: () => void) => {
     const handler = (): void => callback()
@@ -134,6 +144,17 @@ const api = {
     const handler = (): void => callback()
     ipcRenderer.on('tray:prev', handler)
     return () => ipcRenderer.removeListener('tray:prev', handler)
+  },
+  // App-menu actions (Settings ⌘, / View ▸ Toggle Sidebar ⌘\)
+  onMenuNavigate: (callback: (path: string) => void) => {
+    const handler = (_e: unknown, path: string): void => callback(path)
+    ipcRenderer.on('menu:navigate', handler)
+    return () => ipcRenderer.removeListener('menu:navigate', handler)
+  },
+  onToggleSidebar: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('menu:toggle-sidebar', handler)
+    return () => ipcRenderer.removeListener('menu:toggle-sidebar', handler)
   }
 }
 

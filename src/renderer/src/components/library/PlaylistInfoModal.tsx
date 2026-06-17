@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import { useLibraryStore } from '../../store/libraryStore'
 import { formatDuration } from '../../../../shared/utils'
 import { Modal } from '../ui/Modal'
+import { AlbumArt } from '../ui/AlbumArt'
 import {
   XMarkIcon,
   FolderOpenIcon,
@@ -72,16 +73,9 @@ export function PlaylistInfoModal({ playlistId, onClose }: PlaylistInfoModalProp
     <Modal open={true} onClose={onClose} className="max-w-3xl w-full mx-4 max-h-[85vh] flex flex-col">
       {/* Header */}
       <div className="flex items-start gap-4 p-6 pb-4">
-        <img
-          src={playlist.thumbnailUrl}
-          alt=""
-          className="w-20 h-20 rounded-lg object-cover bg-bg-inset shrink-0"
-          loading="lazy"
-          decoding="async"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
+        <AlbumArt src={playlist.thumbnailUrl} className="w-20 h-20" radius="0.5rem" />
         <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-semibold font-display truncate">{playlist.title}</h2>
+          <h2 className="text-xl font-semibold truncate">{playlist.title}</h2>
           <p className="text-sm text-text-secondary truncate">{playlist.channelTitle}</p>
           <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
             <span className="flex items-center gap-1">
@@ -144,14 +138,7 @@ export function PlaylistInfoModal({ playlistId, onClose }: PlaylistInfoModalProp
                   <span className="w-6 text-right text-xs text-text-muted tabular-nums shrink-0">
                     {track.position}
                   </span>
-                  <img
-                    src={track.thumbnailUrl}
-                    alt=""
-                    className="w-8 h-8 rounded object-cover bg-bg-inset shrink-0"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
+                  <AlbumArt src={track.thumbnailUrl} className="w-8 h-8" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-text-primary truncate">{track.title}</p>
                     <p className="text-xs text-text-muted truncate">{track.artist}</p>

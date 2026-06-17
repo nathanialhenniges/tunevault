@@ -84,6 +84,9 @@ export interface Device {
   playlistIds: string[]
 }
 
+/** Row spacing for the track lists. */
+export type TrackDensity = 'comfortable' | 'compact'
+
 export interface AppSettings {
   musicDir: string
   /** Managed media devices. Each syncs its assigned playlists into its folder. */
@@ -92,6 +95,7 @@ export interface AppSettings {
   concurrency: number
   theme: 'dark' | 'light' | 'system'
   accent: AccentColor
+  trackDensity: TrackDensity
   dateFormat: DateFormat
   releaseDateSource: ReleaseDateSource
   sync: SyncConfig
@@ -104,6 +108,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   concurrency: 2,
   theme: 'dark',
   accent: 'orange',
+  trackDensity: 'comfortable',
   dateFormat: 'MM/DD/YYYY',
   releaseDateSource: 'youtube',
   sync: { enabled: false, intervalHours: 6, syncedPlaylistIds: [], lastSyncTime: null }
