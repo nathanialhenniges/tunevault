@@ -12,7 +12,10 @@ export function SettingsView(): JSX.Element {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
 
   useEffect(() => {
-    return window.api.onUpdateStatus(setUpdateStatus)
+    const unsubscribe = window.api.onUpdateStatus(setUpdateStatus)
+    return () => {
+      unsubscribe()
+    }
   }, [])
 
   return (

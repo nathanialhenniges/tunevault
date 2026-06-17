@@ -4,7 +4,7 @@ import { useLibraryStore } from '../../store/libraryStore'
 export function SearchBar(): JSX.Element {
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery)
   const [inputValue, setInputValue] = useState('')
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   useEffect(() => {
     return () => {
