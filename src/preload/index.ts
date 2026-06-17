@@ -119,6 +119,16 @@ const api = {
     return () => ipcRenderer.removeListener(IpcChannels.UPDATE_STATUS, handler)
   },
 
+  // Cache & data
+  extractColor: (url: string): Promise<{ r: number; g: number; b: number } | null> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_EXTRACT_COLOR, url),
+  getCacheStats: (): Promise<{ bytes: number; files: number }> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_STATS),
+  clearCache: (): Promise<{ bytes: number; files: number }> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_CLEAR),
+  clearAllData: (): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.CACHE_CLEAR_ALL_DATA),
+
   // Tray / media key events
   onTrayTogglePlay: (callback: () => void) => {
     const handler = (): void => callback()

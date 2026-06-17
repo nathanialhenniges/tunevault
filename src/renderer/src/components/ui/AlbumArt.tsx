@@ -24,6 +24,10 @@ export function AlbumArt({ src, alt = '', className = 'w-9 h-9', radius, style }
   useEffect(() => setFailed(false), [src])
   const showImg = src && !failed
   const borderRadius = radius ?? '6px'
+  // Route remote thumbnails through the disk-cache proxy (fast + offline). Local
+  // (tunevault://) and data: URLs pass through untouched.
+  const displaySrc =
+    src && /^https?:\/\//.test(src) ? `tvcache://img/${encodeURIComponent(src)}` : src
 
   return (
     <div
@@ -44,7 +48,7 @@ export function AlbumArt({ src, alt = '', className = 'w-9 h-9', radius, style }
       )}
       {showImg && (
         <img
-          src={src}
+          src={displaySrc}
           alt={alt}
           loading="lazy"
           decoding="async"

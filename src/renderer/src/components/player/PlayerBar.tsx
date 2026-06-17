@@ -18,6 +18,7 @@ import {
 } from '@heroicons/react/24/solid'
 import { useVisualizerStore } from '../../store/visualizerStore'
 import type { VisualizerStyle } from '../../store/visualizerStore'
+import { useArtColor } from '../../hooks/useArtColor'
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60)
@@ -125,8 +126,25 @@ export function PlayerBar(): JSX.Element {
     setRepeat(modes[(idx + 1) % modes.length])
   }
 
+  const artRgb = useArtColor(currentTrack?.thumbnailUrl)
+
   return (
-    <div className="relative h-20 glass-chrome glass-border-player flex items-center px-4 gap-4 transition-colors duration-200">
+    <div
+      className="relative h-20 glass-chrome glass-border-player flex items-center px-4 gap-4 transition-colors duration-200"
+      style={{ ['--np-rgb' as string]: artRgb ?? 'var(--accent-rgb)' }}
+    >
+      {/* Now-playing art tint — subtle, left-weighted; falls back to the accent.
+         Sits below the controls (negative z) so text contrast is preserved. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          zIndex: -1,
+          background:
+            'linear-gradient(100deg, rgba(var(--np-rgb), 0.16) 0%, rgba(var(--np-rgb), 0.05) 38%, transparent 70%)',
+          transition: 'background 0.5s ease'
+        }}
+      />
       <NowPlaying />
 
       <div className="flex-1 flex flex-col items-center gap-1">

@@ -7,6 +7,7 @@ import { buildAppMenu } from './menu'
 import { createTray } from './tray'
 import { abortAllDownloads, hasActiveDownloads } from './ipc/download.ipc'
 import { SettingsService } from './services/settings.service'
+import { CacheService } from './services/cache.service'
 
 function getIconPath(): string {
   return is.dev
@@ -38,6 +39,16 @@ if (!gotLock) {
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'tunevault',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true
+    }
+  },
+  {
+    // Proxy-cache for remote thumbnails: load fast, work offline.
+    scheme: 'tvcache',
     privileges: {
       standard: true,
       secure: true,
@@ -154,6 +165,22 @@ app.whenReady().then(() => {
     return net.fetch(fileUrl, {
       headers: request.headers
     })
+  })
+
+  // tvcache://img/<encodeURIComponent(remoteUrl)> — serve a remote thumbnail from
+  // the local disk cache, fetching + storing it on a miss. 404 on miss while
+  // offline so <AlbumArt> falls back to its gradient placeholder.
+  protocol.handle('tvcache', async (request) => {
+    try {
+      const u = new URL(request.url)
+      const remote = decodeURIComponent(u.pathname.replace(/^\/+/, ''))
+      if (!/^https?:\/\//.test(remote)) return new Response('Bad request', { status: 400 })
+      const file = await CacheService.getArtFile(remote)
+      if (!file) return new Response('Not found', { status: 404 })
+      return net.fetch(pathToFileURL(file).href)
+    } catch {
+      return new Response('Bad request', { status: 400 })
+    }
   })
 
   // Set dock icon in dev mode (production uses electron-builder config)

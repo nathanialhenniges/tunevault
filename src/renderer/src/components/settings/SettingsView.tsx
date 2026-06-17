@@ -4,7 +4,15 @@ import { useWolfModeStore } from '../../hooks/useWolfMode'
 import type { AudioFormat, DateFormat, ReleaseDateSource, UpdateStatus } from '../../../../shared/models'
 import { PageHeader } from '../ui/PageHeader'
 import { Segmented } from '../ui/Segmented'
+import { Modal } from '../ui/Modal'
+import { toast } from '../../store/toastStore'
 import wolfIcon from '../../assets/wolf-icon.png'
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / (1024 * 1024)).toFixed(1)} MB`
+}
 
 /** A native grouped-list card with a small section heading. */
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
@@ -50,11 +58,32 @@ export function SettingsView(): JSX.Element {
   const wolfEnabled = useWolfModeStore((s) => s.enabled)
   const toggleWolf = useWolfModeStore((s) => s.toggle)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const [cacheStats, setCacheStats] = useState<{ bytes: number; files: number } | null>(null)
+  const [clearingCache, setClearingCache] = useState(false)
+  const [confirmErase, setConfirmErase] = useState(false)
 
   useEffect(() => {
     const off = window.api.onUpdateStatus(setUpdateStatus)
     return () => { off() }
   }, [])
+
+  useEffect(() => {
+    // Optional-chain: a stale preload (mid dev-reload) shouldn't crash the app.
+    window.api.getCacheStats?.().then(setCacheStats).catch(() => {})
+  }, [])
+
+  const handleClearCache = async (): Promise<void> => {
+    setClearingCache(true)
+    try {
+      const stats = await window.api.clearCache?.()
+      if (stats) setCacheStats(stats)
+      toast.success('Cache cleared')
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setClearingCache(false)
+    }
+  }
 
   return (
     <div className="space-y-7 max-w-2xl">
@@ -227,6 +256,36 @@ export function SettingsView(): JSX.Element {
         </Field>
       </Section>
 
+      <Section title="Storage & data">
+        <Field
+          label="Cache"
+          hint={
+            cacheStats
+              ? `${cacheStats.files} cached item${cacheStats.files === 1 ? '' : 's'} · ${formatBytes(cacheStats.bytes)}`
+              : 'Cached artwork for instant, offline display.'
+          }
+        >
+          <button
+            onClick={handleClearCache}
+            disabled={clearingCache || (cacheStats?.files ?? 0) === 0}
+            className="px-3.5 py-1.5 rounded-lg text-sm font-medium bg-glass-hover text-text-secondary hover:bg-glass-active transition disabled:opacity-50"
+          >
+            {clearingCache ? 'Clearing…' : 'Clear Cache'}
+          </button>
+        </Field>
+        <Field
+          label="Erase all data"
+          hint="Delete your library entries, settings, and cache, then restart. This cannot be undone."
+        >
+          <button
+            onClick={() => setConfirmErase(true)}
+            className="px-3.5 py-1.5 rounded-lg text-sm font-medium text-red-500 dark:text-red-400 border border-red-500/30 hover:bg-red-500/10 transition"
+          >
+            Erase Everything…
+          </button>
+        </Field>
+      </Section>
+
       {/* Wolf Mode — only visible after Konami code unlock */}
       {wolfUnlocked && (
         <Section title="Secret">
@@ -245,6 +304,32 @@ export function SettingsView(): JSX.Element {
           </Field>
         </Section>
       )}
+
+      <Modal open={confirmErase} onClose={() => setConfirmErase(false)} className="p-6 max-w-md mx-4">
+        <h3 className="text-lg font-semibold mb-2">Erase all data?</h3>
+        <p className="text-sm text-text-secondary mb-2">
+          This permanently deletes your library entries, all settings, and the cache, then restarts
+          TuneVault. This cannot be undone.
+        </p>
+        <p className="text-sm text-text-secondary mb-6">
+          Your downloaded audio files on disk are <strong>not</strong> deleted — only TuneVault&apos;s
+          records of them.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setConfirmErase(false)}
+            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => window.api.clearAllData?.()}
+            className="px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+          >
+            Erase Everything
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }

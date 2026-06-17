@@ -45,5 +45,11 @@ export const IpcChannels = {
   UPDATE_CHECK: 'update:check',
   UPDATE_STATUS: 'update:status',
   UPDATE_DOWNLOAD: 'update:download',
-  UPDATE_INSTALL: 'update:install'
+  UPDATE_INSTALL: 'update:install',
+
+  // Cache & data
+  CACHE_EXTRACT_COLOR: 'cache:extract-color',
+  CACHE_STATS: 'cache:stats',
+  CACHE_CLEAR: 'cache:clear',
+  CACHE_CLEAR_ALL_DATA: 'cache:clear-all-data'
 } as const
