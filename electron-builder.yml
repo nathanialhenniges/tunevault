@@ -17,8 +17,10 @@ asarUnpack:
 
 mac:
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
   identity: null
   gatekeeperAssess: false
   extraResources:
