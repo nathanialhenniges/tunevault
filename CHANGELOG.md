@@ -2,6 +2,11 @@
 
 All notable changes to TuneVault will be documented in this file.
 
+## [2.6.1] - 2026-06-18
+
+### Fixed
+- macOS "Support Ending for Intel-based Apps" warning — bundled ffmpeg/ffprobe were x86_64-only (from evermeet.cx) and ran under Rosetta. Now ship arm64-native builds; mac dmg/zip pinned to `arch: arm64` (Apple Silicon only)
+
 ## [2.6.0] - 2026-06-17
 
 ### Added
