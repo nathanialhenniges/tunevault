@@ -2,6 +2,28 @@
 
 All notable changes to TuneVault will be documented in this file.
 
+## [2.6.0] - 2026-06-17
+
+### Added
+- Native macOS/Windows redesign — system fonts, segmented controls, Windows Mica blur effect
+- macOS window vibrancy (translucent sidebar/titlebar)
+- Native app menu with standard macOS keyboard shortcuts (⌘, for Settings, ⌘\ to toggle sidebar)
+- Multi-device sync, local file import, accent color picker, genre field support
+- Import public Apple Music playlists with YouTube/SoundCloud as audio source
+- Artwork cache with dominant-color extraction for Now Playing background tinting
+- Clear cache / Erase all data options in Settings
+- Compact/comfortable track-density toggle in Settings
+
+### Fixed
+- Sidebar "Downloaded" section now only shows YouTube/Apple Music playlists (not local imports)
+- Settings changes no longer trigger a toast on every keystroke
+- Text contrast meets WCAG AA throughout (text-muted, instructional labels, vibrancy backing)
+- Removed spurious "Library loaded" toast
+
+### Changed
+- Page titles enlarged and made consistent across all views
+- CI now only builds full installers on version tags — PRs get a fast build-only check
+
 ## [2.5.0] - 2026-02-25
 
 ### Added
