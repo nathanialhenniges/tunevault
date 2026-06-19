@@ -28,9 +28,11 @@ const ytdlpUrls = {
   linux: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp'
 }
 
-// ffmpeg URLs (using static builds)
+// ffmpeg URLs (using static builds).
+// mac: arm64-native (Apple Silicon only). evermeet.cx is x86_64-only and
+// trips the macOS "Intel app, won't run on future macOS" warning. ponytail: arm64-only by design.
 const ffmpegUrls = {
-  mac: 'https://evermeet.cx/ffmpeg/getrelease/zip',
+  mac: 'https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip',
   win: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
   linux:
     'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz'
@@ -98,8 +100,9 @@ async function downloadFfmpeg() {
       execSync(`rm "${zipPath}"`, { stdio: 'inherit' })
       chmodSync(ffmpegDest, 0o755)
 
-      // Also get ffprobe
-      const ffprobeUrl = 'https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip'
+      // Also get ffprobe (arm64-native to match ffmpeg)
+      const ffprobeUrl =
+        'https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffprobe.zip'
       const probeZip = join(binDir, 'ffprobe.zip')
       execSync(`curl -L -o "${probeZip}" "${ffprobeUrl}"`, { stdio: 'inherit' })
       execSync(`unzip -o "${probeZip}" -d "${binDir}"`, { stdio: 'inherit' })
