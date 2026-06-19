@@ -59,7 +59,8 @@ const SeekBar = memo(function SeekBar() {
   }
 
   const handleSeekCommit = (): void => {
-    audioEngine.seek(seekValueRef.current)
+    // Guard: nothing loaded yet (max defaults to 1) — don't seek a phantom.
+    if (duration > 0) audioEngine.seek(seekValueRef.current)
     setIsSeeking(false)
   }
 
@@ -75,6 +76,7 @@ const SeekBar = memo(function SeekBar() {
         onChange={handleSeekInput}
         onMouseUp={handleSeekCommit}
         onTouchEnd={handleSeekCommit}
+        onKeyUp={handleSeekCommit}
         className="flex-1 h-1 appearance-none seek-track rounded-full cursor-pointer"
         aria-label="Seek"
       />
@@ -130,7 +132,7 @@ export function PlayerBar(): JSX.Element {
 
   return (
     <div
-      className="relative h-20 glass-chrome glass-border-player flex items-center px-4 gap-4 transition-colors duration-200"
+      className="relative h-20 glass-chrome glass-border-player flex items-center px-6 gap-4 transition-colors duration-200"
       style={{ ['--np-rgb' as string]: artRgb ?? 'var(--accent-rgb)' }}
     >
       {/* Now-playing art tint — subtle, left-weighted; falls back to the accent.

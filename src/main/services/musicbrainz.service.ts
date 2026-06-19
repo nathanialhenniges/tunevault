@@ -39,19 +39,48 @@ export class MusicBrainzService {
     return typeof firstRelease === 'string' && firstRelease ? firstRelease : null
   }
 
-  /**
-   * Best-effort genre from MusicBrainz: search recording -> lookup its genres/tags
-   * -> most-voted name, Title Cased. Returns null if MB has no genre (coverage varies).
-   * Caller must respect MB rate limits (~1 req/sec) — this makes two requests.
-   */
+  /** Back-compat: genre only. */
   async lookupGenre(artist: string, title: string): Promise<string | null> {
-    const query = `recording:"${title}" AND artist:"${artist}"`
-    const search = await this.getJson(
-      `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(query)}&fmt=json&limit=1`
+    return (await this.lookupMetadata(artist, title)).genre
+  }
+
+  /**
+   * Best-effort metadata from MusicBrainz for a track: genre (most-voted
+   * genre/tag, Title Cased) plus a Cover Art Archive front-image URL. Searches by
+   * artist+title; when the artist is missing/"Unknown Artist", or the scoped
+   * search finds nothing, falls back to a title-only search so name-only files
+   * (e.g. "Goin' on (feat. Snakewolf) - Toasty") can still match.
+   * Two MB requests max; caller must respect MB rate limits (~1 req/sec).
+   */
+  async lookupMetadata(
+    artist: string,
+    title: string
+  ): Promise<{ genre: string | null; coverUrl: string | null; mbArtist: string | null }> {
+    const usable = artist && artist.trim() && artist.trim().toLowerCase() !== 'unknown artist'
+    const searchUrl = (q: string): string =>
+      `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(q)}&fmt=json&limit=1`
+
+    let search = await this.getJson(
+      searchUrl(usable ? `recording:"${title}" AND artist:"${artist}"` : `recording:"${title}"`)
     )
-    const recordings = search?.recordings as Array<{ id?: string }> | undefined
-    const mbid = recordings?.[0]?.id
-    if (!mbid) return null
+    let recordings = search?.recordings as Array<Record<string, unknown>> | undefined
+    if ((!recordings || !recordings.length) && usable) {
+      // Scoped search came up empty — retry by title only.
+      search = await this.getJson(searchUrl(`recording:"${title}"`))
+      recordings = search?.recordings as Array<Record<string, unknown>> | undefined
+    }
+    const rec0 = recordings?.[0]
+    const mbid = rec0?.id as string | undefined
+    if (!mbid) return { genre: null, coverUrl: null, mbArtist: null }
+
+    // Cover art comes from a release the recording appears on (Cover Art Archive).
+    const releases = rec0?.releases as Array<{ id?: string }> | undefined
+    const releaseId = releases?.[0]?.id
+    const coverUrl = releaseId ? `https://coverartarchive.org/release/${releaseId}/front-500` : null
+
+    // Corrected artist (for name-only files where artist was unknown).
+    const credit = rec0?.['artist-credit'] as Array<{ name?: string }> | undefined
+    const mbArtist = credit?.map((c) => c.name).filter(Boolean).join(', ') || null
 
     const rec = await this.getJson(
       `https://musicbrainz.org/ws/2/recording/${mbid}?fmt=json&inc=genres+tags`
@@ -62,6 +91,7 @@ export class MusicBrainzService {
       return sorted[0]?.name ?? null
     }
     const name = top(rec?.genres) || top(rec?.tags)
-    return name ? name.replace(/\b\w/g, (c) => c.toUpperCase()) : null
+    const genre = name ? name.replace(/\b\w/g, (c) => c.toUpperCase()) : null
+    return { genre, coverUrl, mbArtist }
   }
 }

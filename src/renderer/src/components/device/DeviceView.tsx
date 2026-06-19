@@ -72,7 +72,7 @@ export function DeviceView(): JSX.Element {
     <div className="space-y-6">
       <PageHeader
         title="Devices"
-        subtitle="Create a device, assign playlists to it, then Sync to mirror them into its folder — drag that into iTunes to sync your iPod."
+        subtitle="Create a device, assign playlists to it, then Sync to mirror them into its folder. Drag that into iTunes to sync your iPod."
         actions={
           <button
             onClick={() => setShowNew(true)}

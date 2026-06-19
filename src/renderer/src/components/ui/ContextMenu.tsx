@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ContextMenuItem {
   label: string
@@ -56,13 +57,16 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
     borderRadius: 'var(--radius-card)'
   }
 
-  return (
+  // Portal to <body> so the fixed left/top is measured from the viewport. The
+  // route wrapper holds a transform during/after its enter animation, which
+  // would otherwise become the containing block and offset the menu.
+  return createPortal(
     <div ref={menuRef} style={style} className="min-w-[180px] py-1.5 px-1 glass-float glass-border-float glass-reveal">
       {items.map((item, i) => (
         <button
           key={i}
           onClick={() => { item.onClick(); onClose() }}
-          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition rounded-[8px] ${
+          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition rounded-[var(--radius-item)] ${
             item.danger
               ? 'text-red-400 hover:bg-red-500/10'
               : 'text-text-secondary hover:bg-glass-hover hover:text-text-primary'
@@ -72,6 +76,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
           {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body
   )
 }

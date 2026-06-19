@@ -98,9 +98,9 @@ a:not([href^="http"]) {
   --shadow-glass-xl: 0 16px 48px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.06);
 
   /* Radius scale */
-  --radius-panel: 18px;
-  --radius-card: 14px;
-  --radius-item: 10px;
+  --radius-panel: 10px;
+  --radius-card: 8px;
+  --radius-item: 6px;
 
   /* Interactive surface tokens */
   --glass-hover: rgba(0, 0, 0, 0.04);
@@ -111,8 +111,10 @@ a:not([href^="http"]) {
   --seek-track-bg: rgba(0, 0, 0, 0.08);
   --seek-track-hover: rgba(0, 0, 0, 0.12);
 
-  /* Display font — editorial variable serif, used only on the sidebar wordmark */
-  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
+  /* Display font — characterful grotesque for the wordmark + page titles */
+  --font-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  /* Body/UI font — clean variable grotesque, self-hosted */
+  --font-body: 'Hanken Grotesk Variable', 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 /* ── Obsidian dark theme ─────────────────────────────────── */
@@ -158,9 +160,9 @@ a:not([href^="http"]) {
   --shadow-glass-lg: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
   --shadow-glass-xl: 0 16px 48px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.3);
 
-  --radius-panel: 18px;
-  --radius-card: 14px;
-  --radius-item: 10px;
+  --radius-panel: 10px;
+  --radius-card: 8px;
+  --radius-item: 6px;
 
   /* Interactive surface tokens — dark */
   --glass-hover: rgba(255, 255, 255, 0.05);
@@ -171,7 +173,7 @@ a:not([href^="http"]) {
   --seek-track-bg: rgba(255, 255, 255, 0.06);
   --seek-track-hover: rgba(255, 255, 255, 0.1);
 
-  --font-display: 'Fraunces Variable', 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ── Accent color ── orange is the default; blue is opt-in via Settings.
@@ -192,12 +194,11 @@ a:not([href^="http"]) {
 
 body {
   margin: 0;
-  /* Platform system UI font: SF Pro on macOS, Segoe UI Variable on Win11 — the
-     app reads native on each OS rather than shipping a custom UI typeface. */
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
-    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Self-hosted Hanken Grotesk for the UI, with the platform UI font as the
+     fallback while the bundled woff2 loads. */
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   user-select: none;
   overflow: hidden;
   background-color: var(--bg-base);
@@ -205,11 +206,11 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
-/* macOS: keep a mostly-opaque backing so text contrast stays readable (WCAG AA),
-   while a thin layer of the native window vibrancy still shows through for depth.
-   Fully-transparent vibrancy tanked legibility, so favor readability. */
+/* macOS: opaque backing. Window-level vibrancy was dropped (it only ever showed
+   as a desktop-bleed hairline at the frame edge), so the body stays fully solid
+   for crisp text contrast. In-app depth comes from the .glass-* backdrop blurs. */
 .is-mac body {
-  background-color: color-mix(in srgb, var(--bg-base) 90%, transparent);
+  background-color: var(--bg-base);
 }
 .is-mac body::before {
   opacity: 0.6;
@@ -347,6 +348,21 @@ body::before {
   animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Right inspector drawer slide-in */
+@keyframes drawerReveal {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.drawer-reveal {
+  animation: drawerReveal 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Route transitions */
 @keyframes routeEnter {
   from {
@@ -370,8 +386,12 @@ body::before {
   }
 }
 
+/* No `forwards`: once the enter finishes, the element reverts to its base
+   (opacity 1, transform none) instead of holding translateY(0). A held
+   transform would make this the containing block for position:fixed children
+   (context menus, modal overlays), offsetting them from the viewport. */
 .route-enter {
-  animation: routeEnter 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: routeEnter 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .route-exit {

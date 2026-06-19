@@ -32,20 +32,23 @@ function walkAudio(p: string): string[] {
   }
 }
 
-// Shared genre resolution: cache hit returns immediately; cache miss looks it up via
-// MusicBrainz, caches it (incl. null = "no genre"), and rate-limits to ~1 req/sec.
-async function lookupGenreCached(
+type MbMeta = { genre: string | null; coverUrl: string | null; mbArtist: string | null }
+
+// Shared MB resolution: cache hit returns immediately; cache miss looks up genre +
+// cover art, caches it, and rate-limits to ~1 req/sec.
+async function lookupMetaCached(
   mb: MusicBrainzService,
-  cache: Map<string, string | null>,
+  cache: Map<string, MbMeta>,
   artist: string,
   title: string
-): Promise<string | null> {
+): Promise<MbMeta> {
   const key = `${artist} ${title}`
-  if (cache.has(key)) return cache.get(key) ?? null
-  const genre = await mb.lookupGenre(artist, title)
-  cache.set(key, genre)
+  const hit = cache.get(key)
+  if (hit) return hit
+  const meta = await mb.lookupMetadata(artist, title)
+  cache.set(key, meta)
   await delay(1100)
-  return genre
+  return meta
 }
 
 export function registerLibraryIpc(): void {
@@ -68,6 +71,42 @@ export function registerLibraryIpc(): void {
     if (!Array.isArray(trackIds)) throw new Error('trackIds must be an array')
     library.deleteTracks(trackIds)
   })
+
+  ipcMain.handle(IpcChannels.LIBRARY_MOVE_TRACKS, async (_event, trackIds: string[], targetPlaylistId: string) => {
+    if (!Array.isArray(trackIds) || !trackIds.length) throw new Error('trackIds must be a non-empty array')
+    if (!targetPlaylistId) throw new Error('targetPlaylistId required')
+    library.moveTracks(trackIds, targetPlaylistId)
+  })
+
+  ipcMain.handle(IpcChannels.LIBRARY_RENAME_PLAYLIST, async (_event, playlistId: string, newTitle: string) => {
+    library.renamePlaylist(playlistId, newTitle)
+  })
+
+  ipcMain.handle(
+    IpcChannels.LIBRARY_SET_METADATA,
+    async (_event, trackIds: string[], patch: { title?: string; artist?: string; genre?: string }) => {
+      if (!Array.isArray(trackIds) || !trackIds.length) throw new Error('trackIds must be a non-empty array')
+      const updated = library.setTrackMetadata(trackIds, patch)
+      const ffmpeg = new FfmpegService()
+      let tagged = 0
+      for (const t of updated) {
+        if (t.filePath && existsSync(t.filePath)) {
+          try {
+            // Re-tag the file with the changed fields (using each track's final values).
+            const fileTags: { title?: string; artist?: string; genre?: string } = {}
+            if (patch.title !== undefined) fileTags.title = t.title
+            if (patch.artist !== undefined) fileTags.artist = t.artist
+            if (patch.genre !== undefined) fileTags.genre = t.genre ?? ''
+            await ffmpeg.setTags(t.filePath, fileTags)
+            tagged++
+          } catch {
+            /* non-fatal: library is already updated */
+          }
+        }
+      }
+      return { updated: updated.length, tagged }
+    }
+  )
 
   ipcMain.handle(IpcChannels.LIBRARY_DELETE_ALL, async () => {
     library.deleteAll()
@@ -158,7 +197,7 @@ export function registerLibraryIpc(): void {
 
     const ffmpeg = new FfmpegService()
     const mb = new MusicBrainzService()
-    const genreCache = new Map<string, string | null>()
+    const metaCache = new Map<string, MbMeta>()
     let copied = 0
     let total = 0
     let genreTagged = 0
@@ -183,7 +222,7 @@ export function registerLibraryIpc(): void {
         } catch {
           continue
         }
-        const genre = t.genre ?? (await lookupGenreCached(mb, genreCache, t.artist, t.title))
+        const genre = t.genre ?? (await lookupMetaCached(mb, metaCache, t.artist, t.title)).genre
         if (genre) {
           try {
             await ffmpeg.setGenre(destFile, genre)
@@ -284,42 +323,144 @@ export function registerLibraryIpc(): void {
         imported++
       }
       library.addTracks(playlist, tracks)
+      // Write the human-readable playlist-info.md alongside the audio (downloads
+      // already do this; imports used to skip it).
+      try {
+        library.writePlaylistInfo(destDir, playlistId)
+      } catch {
+        /* non-fatal */
+      }
     }
 
     return { imported, playlists: playlistCount }
   })
 
-  ipcMain.handle(IpcChannels.LIBRARY_FETCH_GENRES, async (_event, playlistIds: string[]) => {
+  ipcMain.handle(IpcChannels.LIBRARY_FETCH_GENRES, async (event, playlistIds: string[]) => {
     const data = library.load()
     const scoped = Array.isArray(playlistIds) && playlistIds.length
     const playlists = data.playlists.filter((p) => !scoped || playlistIds.includes(p.id))
 
     const mb = new MusicBrainzService()
     const ffmpeg = new FfmpegService()
-    const genreCache = new Map<string, string | null>()
-    const updates: { trackId: string; genre: string }[] = []
-    let tagged = 0
+    const metaCache = new Map<string, MbMeta>()
+    const patches: { trackId: string; genre?: string; artist?: string; thumbnailUrl?: string }[] = []
+    let genres = 0
+    let artwork = 0
+
+    // A track needs a lookup if it's missing a genre OR album art.
+    const needs = (t: Track): boolean => !t.genre || !t.thumbnailUrl
+    const total = playlists.reduce((n, p) => n + p.tracks.filter(needs).length, 0)
+    let current = 0
+    event.sender.send(IpcChannels.LIBRARY_FETCH_GENRES_PROGRESS, { current, total })
 
     for (const pl of playlists) {
       for (const t of pl.tracks) {
-        if (t.genre) continue // already known
-        const genre = await lookupGenreCached(mb, genreCache, t.artist, t.title)
-        if (genre) {
-          updates.push({ trackId: t.id, genre })
+        if (!needs(t)) continue
+        current++
+        event.sender.send(IpcChannels.LIBRARY_FETCH_GENRES_PROGRESS, { current, total, label: t.title })
+
+        const meta = await lookupMetaCached(mb, metaCache, t.artist, t.title)
+        const patch: { trackId: string; genre?: string; artist?: string; thumbnailUrl?: string } = {
+          trackId: t.id
+        }
+
+        if (!t.genre && meta.genre) {
+          patch.genre = meta.genre
+          genres++
           if (t.filePath && existsSync(t.filePath)) {
             try {
-              await ffmpeg.setGenre(t.filePath, genre)
-              tagged++
+              await ffmpeg.setTags(t.filePath, { genre: meta.genre })
             } catch {
-              /* non-fatal: genre still stored in the library */
+              /* non-fatal */
             }
           }
+        }
+
+        // Fill in a real artist only when the file had none (don't overwrite).
+        const unknownArtist = !t.artist || t.artist.trim().toLowerCase() === 'unknown artist'
+        if (unknownArtist && meta.mbArtist) {
+          patch.artist = meta.mbArtist
+          if (t.filePath && existsSync(t.filePath)) {
+            try {
+              await ffmpeg.setTags(t.filePath, { artist: meta.mbArtist })
+            } catch {
+              /* non-fatal */
+            }
+          }
+        }
+
+        // Album art: download the Cover Art Archive front image, point the
+        // library at it, and embed it into the file for iTunes/devices.
+        if (!t.thumbnailUrl && meta.coverUrl && t.filePath) {
+          const artDir = join(dirname(t.filePath), '.art')
+          mkdirSync(artDir, { recursive: true })
+          const imgPath = join(artDir, `mb-${t.id.replace(/[^a-z0-9]/gi, '_')}.jpg`)
+          if (await ffmpeg.fetchArtwork(meta.coverUrl, imgPath)) {
+            const clean = process.platform === 'win32' ? imgPath : imgPath.replace(/^\/+/, '')
+            patch.thumbnailUrl = `tunevault://audio/${encodeURIComponent(clean)}`
+            artwork++
+            try {
+              await ffmpeg.embedArtwork(t.filePath, imgPath)
+            } catch {
+              /* non-fatal: library still shows the saved image */
+            }
+          }
+        }
+
+        if (patch.genre !== undefined || patch.artist !== undefined || patch.thumbnailUrl !== undefined) {
+          patches.push(patch)
+          // Live update: push the patch to the renderer so the row updates now.
+          event.sender.send(IpcChannels.LIBRARY_FETCH_GENRES_PROGRESS, { current, total, label: t.title, patch })
         }
       }
     }
 
-    library.setTrackGenres(updates)
-    return { updated: updates.length, tagged }
+    library.applyTrackPatches(patches)
+    return { updated: patches.length, genres, artwork, tracks: total }
+  })
+
+  // Re-apply every track's library metadata back onto its file (title/artist/
+  // genre) and regenerate each playlist's playlist-info.md. Use this after the
+  // app gains new tagging features so older files get brought up to date.
+  ipcMain.handle(IpcChannels.LIBRARY_REBUILD_METADATA, async (event, playlistIds: string[]) => {
+    const data = library.load()
+    const scoped = Array.isArray(playlistIds) && playlistIds.length
+    const playlists = data.playlists.filter((p) => !scoped || playlistIds.includes(p.id))
+    const ffmpeg = new FfmpegService()
+
+    const total = playlists.reduce(
+      (n, p) => n + p.tracks.filter((t) => t.filePath && existsSync(t.filePath)).length,
+      0
+    )
+    let current = 0
+    let tagged = 0
+    let firstError: string | undefined
+    event.sender.send(IpcChannels.LIBRARY_REBUILD_PROGRESS, { current, total })
+
+    for (const pl of playlists) {
+      for (const t of pl.tracks) {
+        if (!t.filePath || !existsSync(t.filePath)) continue
+        current++
+        event.sender.send(IpcChannels.LIBRARY_REBUILD_PROGRESS, { current, total, label: t.title })
+        try {
+          await ffmpeg.setTags(t.filePath, { title: t.title, artist: t.artist, genre: t.genre ?? '' })
+          tagged++
+        } catch (e) {
+          firstError ??= (e as Error).message // surface why instead of a silent 0/N
+        }
+      }
+      // Regenerate the markdown info file in the playlist's own folder.
+      const first = pl.tracks.find((t) => t.filePath)
+      if (first?.filePath) {
+        try {
+          library.writePlaylistInfo(dirname(first.filePath), pl.id)
+        } catch {
+          /* non-fatal */
+        }
+      }
+    }
+
+    return { playlists: playlists.length, tracks: total, tagged, error: firstError }
   })
 
   ipcMain.handle(IpcChannels.LIBRARY_OPEN_FOLDER, async (_event, filePath: string) => {

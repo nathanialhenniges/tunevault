@@ -1,8 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-// Fraunces (self-hosted, local) is the single editorial flourish — used only on
-// the sidebar wordmark. Everything else is the platform system font (native).
-import '@fontsource-variable/fraunces'
+// Self-hosted Google fonts, bundled offline (no network at runtime). Hanken
+// Grotesk is the UI/body face (warm, clean grotesque); Bricolage Grotesque is
+// the display face for the wordmark + page titles (characterful headings).
+import '@fontsource-variable/hanken-grotesk'
+import '@fontsource-variable/bricolage-grotesque'
 import App from './App'
 import './styles/index.css'
 

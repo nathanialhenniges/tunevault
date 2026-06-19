@@ -12,6 +12,7 @@ import { TrackDetailModal } from '../ui/TrackDetailModal'
 import { PageHeader } from '../ui/PageHeader'
 import { AlbumArt } from '../ui/AlbumArt'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useImportDrop } from '../../hooks/useImportDrop'
 import type { Track, TrackDensity } from '../../../../shared/models'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import wolfIcon from '../../assets/wolf-icon.png'
@@ -194,12 +195,15 @@ export function PlaylistView(): JSX.Element {
     setContextMenu({ x: e.clientX, y: e.clientY, track })
   }, [])
 
+  // Import drop is scoped to Home only (not app-wide).
+  const { isDragging, dropHandlers } = useImportDrop()
+
   return (
-    <div className="flex flex-col flex-1 min-h-0 space-y-6">
+    <div className="relative flex flex-col flex-1 min-h-0 space-y-6" {...dropHandlers}>
       {!currentPlaylist && !loading ? (
         /* ── Empty state — native start screen: app glyph anchor + one serif line ── */
         <div className="relative flex-1 flex flex-col items-center justify-center text-center px-4 -mt-4">
-          <div className="relative w-full max-w-md">
+          <div className="relative w-full max-w-xl">
             <img
               src={wolfIcon}
               alt=""
@@ -208,18 +212,19 @@ export function PlaylistView(): JSX.Element {
               style={{ filter: 'drop-shadow(0 4px 14px rgba(var(--accent-rgb), 0.25))' }}
             />
             <h1
-              className="text-balance font-semibold text-text-primary"
-              style={{ fontSize: '1.9rem', letterSpacing: '-0.02em' }}
+              className="font-display text-balance font-semibold text-text-primary"
+              style={{ fontSize: '2.1rem', letterSpacing: '-0.02em' }}
             >
               Add music to your vault
             </h1>
             <p className="mt-3 mb-7 text-sm text-text-secondary text-balance">
-              Paste a YouTube or Apple Music link — every track is fetched, tagged
+              Paste a YouTube or Apple Music link. Every track is fetched, tagged
               with artwork, and filed into your library.
             </p>
             <PlaylistInput />
-            <p className="mt-4 text-xs text-text-muted">
-              Supports YouTube, Apple Music, and SoundCloud links.
+            <p className="mt-4 text-xs text-text-muted text-balance">
+              Supports YouTube, Apple Music, and SoundCloud links. You can also drag
+              and drop audio files or folders here to import them.
             </p>
           </div>
         </div>
@@ -384,6 +389,17 @@ export function PlaylistView(): JSX.Element {
 
       {detailTrack && (
         <TrackDetailModal track={detailTrack} onClose={() => setDetailTrack(null)} />
+      )}
+
+      {isDragging && (
+        <div
+          className="absolute inset-0 z-[60] flex items-center justify-center rounded-2xl bg-black/40 pointer-events-none"
+          style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+        >
+          <div className="border-2 border-dashed border-accent rounded-2xl px-12 py-8 text-accent text-lg font-semibold">
+            Drop a playlist URL, or audio files / folders to import
+          </div>
+        </div>
       )}
     </div>
   )

@@ -10,6 +10,20 @@ const appVersion: string = (() => {
   }
 })()
 
+/** Per-track patch pushed during a metadata fetch so the UI can live-update. */
+export interface TrackMetaPatch {
+  trackId: string
+  genre?: string
+  artist?: string
+  thumbnailUrl?: string
+}
+export interface GenreProgress {
+  current: number
+  total: number
+  label?: string
+  patch?: TrackMetaPatch
+}
+
 const api = {
   getVersion: (): string => appVersion,
   platform: process.platform,
@@ -50,6 +64,15 @@ const api = {
     ipcRenderer.invoke(IpcChannels.LIBRARY_VERIFY),
   deleteTracks: (trackIds: string[]): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_DELETE_TRACKS, trackIds),
+  moveTracks: (trackIds: string[], targetPlaylistId: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_MOVE_TRACKS, trackIds, targetPlaylistId),
+  renamePlaylist: (playlistId: string, newTitle: string): Promise<void> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_RENAME_PLAYLIST, playlistId, newTitle),
+  setMetadata: (
+    trackIds: string[],
+    patch: { title?: string; artist?: string; genre?: string }
+  ): Promise<{ updated: number; tagged: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_SET_METADATA, trackIds, patch),
   deleteAllLibrary: (): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_DELETE_ALL),
   openFolder: (filePath: string): Promise<void> =>
@@ -60,8 +83,28 @@ const api = {
     ipcRenderer.invoke(IpcChannels.LIBRARY_READ_PLAYLIST_INFO, playlistId),
   openFile: (filePath: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_OPEN_FILE, filePath),
-  fetchGenres: (playlistIds: string[]): Promise<{ updated: number; tagged: number }> =>
+  fetchGenres: (
+    playlistIds: string[]
+  ): Promise<{ updated: number; genres: number; artwork: number; tracks: number }> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_FETCH_GENRES, playlistIds),
+  onFetchGenresProgress: (
+    cb: (p: GenreProgress) => void
+  ): (() => void) => {
+    const handler = (_e: unknown, p: GenreProgress): void => cb(p)
+    ipcRenderer.on(IpcChannels.LIBRARY_FETCH_GENRES_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IpcChannels.LIBRARY_FETCH_GENRES_PROGRESS, handler)
+  },
+  rebuildMetadata: (
+    playlistIds: string[]
+  ): Promise<{ playlists: number; tracks: number; tagged: number; error?: string }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_REBUILD_METADATA, playlistIds),
+  onRebuildProgress: (
+    cb: (p: { current: number; total: number; label?: string }) => void
+  ): (() => void) => {
+    const handler = (_e: unknown, p: { current: number; total: number; label?: string }): void => cb(p)
+    ipcRenderer.on(IpcChannels.LIBRARY_REBUILD_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IpcChannels.LIBRARY_REBUILD_PROGRESS, handler)
+  },
   // Resolve a dropped File to its absolute path (Electron-only API).
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
   importPaths: (paths: string[]): Promise<{ imported: number; playlists: number }> =>

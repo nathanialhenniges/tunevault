@@ -1,7 +1,9 @@
 import { useRef, useEffect, useState, lazy, Suspense } from 'react'
 import { useLocation, Routes, Route } from 'react-router-dom'
 import { PlaylistView } from '../playlist/PlaylistView'
+import { Loader } from '../ui/Loader'
 
+const PlaylistsView = lazy(() => import('../playlist/PlaylistsView').then((m) => ({ default: m.PlaylistsView })))
 const DownloadQueue = lazy(() => import('../download/DownloadQueue').then((m) => ({ default: m.DownloadQueue })))
 const LibraryView = lazy(() => import('../library/LibraryView').then((m) => ({ default: m.LibraryView })))
 const DeviceView = lazy(() => import('../device/DeviceView').then((m) => ({ default: m.DeviceView })))
@@ -32,9 +34,10 @@ export function AnimatedRoutes(): JSX.Element {
       className={transitionStage === 'enter' ? 'route-enter' : 'route-exit'}
       onAnimationEnd={handleAnimationEnd}
     >
-      <Suspense fallback={<div className="flex items-center justify-center py-20 text-text-muted text-sm">Loading...</div>}>
+      <Suspense fallback={<div className="flex-1 flex items-center justify-center py-24"><Loader size={76} /></div>}>
         <Routes location={displayLocation}>
           <Route path="/" element={<PlaylistView />} />
+          <Route path="/playlists" element={<PlaylistsView />} />
           <Route path="/downloads" element={<DownloadQueue />} />
           <Route path="/library" element={<LibraryView />} />
           <Route path="/device" element={<DeviceView />} />

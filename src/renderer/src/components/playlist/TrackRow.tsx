@@ -87,9 +87,9 @@ export const TrackRow = memo(function TrackRow({ track, index, tracks, selected,
   return (
     <div
       onContextMenu={handleContextMenu}
-      className={`flex items-center gap-4 px-4 ${dense ? 'py-1' : 'py-2.5'} rounded-[var(--radius-item)] transition group ${
+      className={`flex items-center gap-4 px-4 ${dense ? 'py-1' : 'py-2.5'} transition group ${
         isCurrent
-          ? 'bg-accent/10 text-accent border-l-2 border-accent'
+          ? 'bg-accent/10 text-accent'
           : track.filePath
             ? 'hover:bg-glass-hover cursor-pointer'
             : 'hover:bg-glass-hover'
