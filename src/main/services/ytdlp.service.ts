@@ -4,7 +4,7 @@ import { mkdirSync, unlinkSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { BinaryService } from './binary.service'
 import type { Track, AudioFormat, DownloadProgress } from '../../shared/models'
-import { sanitizeFilename, trackFileBaseName } from '../../shared/utils'
+import { sanitizeFilename, trackFileBaseName, isRateLimitMessage } from '../../shared/utils'
 
 interface DownloadOptions {
   track: Track
@@ -46,8 +46,12 @@ export class YtdlpService {
     const ffmpegPath = this.binary.getFfmpegPath()
 
     const sourceUrl = track.sourceUrl || `https://www.youtube.com/watch?v=${track.videoId}`
+    // Reject anything that isn't a real http(s) URL — a crafted sourceUrl/videoId
+    // could otherwise smuggle yt-dlp flags via the positional arg.
+    if (!/^https?:\/\//.test(sourceUrl)) {
+      throw new Error(`Refusing to download a non-http(s) source: ${sourceUrl}`)
+    }
     const args = [
-      sourceUrl,
       '-f',
       'bestaudio',
       '--extract-audio',
@@ -63,12 +67,16 @@ export class YtdlpService {
       '-o',
       outputTemplate,
       '--embed-thumbnail',
-      '--add-metadata'
+      '--add-metadata',
+      // `--` terminates options so a URL starting with '-' is never read as a flag.
+      '--',
+      sourceUrl
     ]
 
     return new Promise<string>((resolve, reject) => {
       const proc: ChildProcess = spawn(ytdlpPath, args)
       let outputPath = ''
+      let rateLimited = false
 
       signal.addEventListener('abort', () => {
         proc.kill('SIGTERM')
@@ -120,7 +128,8 @@ export class YtdlpService {
         // yt-dlp writes some output to stderr, check for actual errors
         if (line.includes('ERROR')) {
           // Detect rate limiting (HTTP 429)
-          if (line.includes('429') || line.toLowerCase().includes('too many requests') || line.toLowerCase().includes('rate limit')) {
+          if (isRateLimitMessage(line)) {
+            rateLimited = true
             onProgress({
               trackId: track.id,
               videoId: track.videoId,
@@ -173,7 +182,9 @@ export class YtdlpService {
 
           resolve(finalPath)
         } else {
-          reject(new Error(`yt-dlp exited with code ${code}`))
+          // Surface rate-limiting in the rejection so the queue's retry logic can
+          // detect it (stderr-only signalling never reached the caller before).
+          reject(new Error(rateLimited ? 'RATE_LIMITED' : `yt-dlp exited with code ${code}`))
         }
       })
 
@@ -184,7 +195,7 @@ export class YtdlpService {
   }
 
   async dumpJson(url: string): Promise<Record<string, unknown>> {
-    const output = await this.binary.runYtdlp([url, '--dump-json', '--no-warnings'])
+    const output = await this.binary.runYtdlp(['--dump-json', '--no-warnings', '--', url])
     try {
       return JSON.parse(output)
     } catch {
@@ -202,9 +213,5 @@ export class YtdlpService {
     } catch {
       return {}
     }
-  }
-
-  sanitizeFilename(name: string): string {
-    return sanitizeFilename(name)
   }
 }

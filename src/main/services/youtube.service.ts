@@ -128,7 +128,9 @@ export class YouTubeService {
 
   private async runYtdlpFlat(playlistUrl: string): Promise<YtdlpFlatEntry[]> {
     const stdout = await this.binary.runYtdlp(
-      ['--flat-playlist', '--dump-json', '--no-warnings', '--ignore-errors', playlistUrl],
+      // `--` terminates options so a search term / URL starting with '-' is treated
+      // as a positional arg, never a flag.
+      ['--flat-playlist', '--dump-json', '--no-warnings', '--ignore-errors', '--', playlistUrl],
       { allowPartial: true }
     )
 

@@ -31,7 +31,9 @@ export function useImportDrop(): ImportDrop {
   }, [])
 
   const onDragLeave = useCallback(() => {
-    counter.current--
+    // Clamp at 0: a missed dragenter (fast pointer exit) could otherwise drive the
+    // counter negative and leave the drag overlay stuck on.
+    counter.current = Math.max(0, counter.current - 1)
     if (counter.current === 0) setIsDragging(false)
   }, [])
 

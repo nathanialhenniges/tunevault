@@ -21,7 +21,10 @@ export class SyncService {
 
   start(intervalHours: number): void {
     this.stop()
-    const ms = intervalHours * 60 * 60 * 1000
+    // Guard against corrupt settings (NaN/0/negative) that would make setInterval
+    // fire continuously. Default to 6h; floor at 15min to avoid hammering YouTube.
+    const hours = Number.isFinite(intervalHours) && intervalHours > 0 ? intervalHours : 6
+    const ms = Math.max(15 * 60 * 1000, hours * 60 * 60 * 1000)
     this.timer = setInterval(() => this.checkAll(), ms)
   }
 

@@ -76,7 +76,7 @@ function findHeaderNode(node: unknown): Record<string, unknown> | undefined {
 
 // Apple artwork URLs are templates like ".../{w}x{h}{c}.{f}".
 function resolveArtwork(url: string): string {
-  return url.replace('{w}', '592').replace('{h}', '592').replace(/\{c\}/, '').replace('{f}', 'jpg')
+  return url.replace(/\{w\}/g, '592').replace(/\{h\}/g, '592').replace(/\{c\}/g, '').replace(/\{f\}/g, 'jpg')
 }
 
 function titleFromSeo(seo: string | undefined): string | undefined {

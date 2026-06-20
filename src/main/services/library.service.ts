@@ -76,20 +76,27 @@ export class LibraryService {
     this.writeToDisk(data)
   }
 
-  /** Enqueue a mutation to run serially, preventing concurrent read-modify-write races */
-  private enqueueWrite(mutate: (data: LibraryData) => void): void {
-    LibraryService.writeQueue = LibraryService.writeQueue.then(() => {
+  /**
+   * Enqueue a mutation to run serially, preventing concurrent read-modify-write
+   * races. Returns a promise for THIS write so callers that need the result on
+   * disk/in-cache (e.g. before writing playlist-info.md) can await it; the shared
+   * queue keeps going even if a mutation rejects.
+   */
+  private enqueueWrite(mutate: (data: LibraryData) => void): Promise<void> {
+    const p = LibraryService.writeQueue.then(() => {
       const data = this.loadRaw()
       mutate(data)
       LibraryService.cache = data
       this.writeToDisk(data)
-    }).catch(() => {
-      // Ensure queue doesn't get stuck on error
     })
+    // Swallow on the shared chain so one failure doesn't wedge the queue, but
+    // return the real promise so the caller can observe/await this write.
+    LibraryService.writeQueue = p.catch(() => {})
+    return p
   }
 
-  upsertTrack(playlist: Playlist, track: Track): void {
-    this.enqueueWrite((data) => {
+  upsertTrack(playlist: Playlist, track: Track): Promise<void> {
+    return this.enqueueWrite((data) => {
       let existingPlaylist = data.playlists.find((p) => p.id === playlist.id)
 
       if (!existingPlaylist) {
@@ -114,36 +121,39 @@ export class LibraryService {
   /** Apply a batch of field patches (genre/artist/thumbnailUrl) in one atomic write. */
   applyTrackPatches(
     patches: { trackId: string; genre?: string; artist?: string; thumbnailUrl?: string }[]
-  ): void {
-    if (!patches.length) return
+  ): Promise<void> {
+    if (!patches.length) return Promise.resolve()
     const map = new Map(patches.map((p) => [p.trackId, p]))
-    const data = this.loadRaw()
-    for (const pl of data.playlists) {
-      for (const t of pl.tracks) {
-        const p = map.get(t.id)
-        if (!p) continue
-        if (p.genre !== undefined) t.genre = p.genre
-        if (p.artist !== undefined) t.artist = p.artist
-        if (p.thumbnailUrl !== undefined) t.thumbnailUrl = p.thumbnailUrl
+    // Queued: genre/art lookups land while downloads are still upserting tracks,
+    // so this must serialize with upsertTrack rather than do its own read-save.
+    return this.enqueueWrite((data) => {
+      for (const pl of data.playlists) {
+        for (const t of pl.tracks) {
+          const p = map.get(t.id)
+          if (!p) continue
+          if (p.genre !== undefined) t.genre = p.genre
+          if (p.artist !== undefined) t.artist = p.artist
+          if (p.thumbnailUrl !== undefined) t.thumbnailUrl = p.thumbnailUrl
+        }
       }
-    }
-    this.save(data)
+    })
   }
 
   /** Add/merge a batch of tracks into a playlist (atomic single write). */
-  addTracks(playlist: Playlist, tracks: Track[]): void {
-    const data = this.loadRaw()
-    let pl = data.playlists.find((p) => p.id === playlist.id)
-    if (!pl) {
-      pl = { ...playlist, tracks: [] }
-      data.playlists.push(pl)
-    }
-    for (const t of tracks) {
-      const idx = pl.tracks.findIndex((x) => x.id === t.id)
-      if (idx >= 0) pl.tracks[idx] = t
-      else pl.tracks.push(t)
-    }
-    this.save(data)
+  addTracks(playlist: Playlist, tracks: Track[]): Promise<void> {
+    // Queued: import can run concurrently with active downloads upserting tracks.
+    return this.enqueueWrite((data) => {
+      let pl = data.playlists.find((p) => p.id === playlist.id)
+      if (!pl) {
+        pl = { ...playlist, tracks: [] }
+        data.playlists.push(pl)
+      }
+      for (const t of tracks) {
+        const idx = pl.tracks.findIndex((x) => x.id === t.id)
+        if (idx >= 0) pl.tracks[idx] = t
+        else pl.tracks.push(t)
+      }
+    })
   }
 
   /**

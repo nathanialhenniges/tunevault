@@ -63,4 +63,10 @@ export function createTray(mainWindow: BrowserWindow): void {
     mainWindow.show()
     mainWindow.focus()
   })
+
+  // Release the tray icon explicitly on quit instead of leaving it to GC.
+  app.once('before-quit', () => {
+    tray?.destroy()
+    tray = null
+  })
 }

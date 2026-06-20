@@ -13,11 +13,13 @@
 > affiliated with or endorsed by YouTube or Google.
 
 TuneVault is a cross-platform desktop application that downloads
-YouTube playlists as high-quality audio files with full iTunes
-metadata tagging and album art. It includes a built-in music player
-with queue management, seeking, shuffle, and repeat modes.
+YouTube (and public Apple Music) playlists as high-quality audio
+files with full iTunes metadata tagging and album art. It includes
+a built-in music player with queue management, seeking, shuffle,
+and repeat modes, an inline metadata editor, and device sync for
+loading playlists onto an iPod via iTunes.
 
-Built for music collectors who want local copies of their YouTube
+Built for music collectors who want local copies of their
 playlists without compromising on audio quality or metadata.
 
 Your music, your library, your rules.
@@ -26,13 +28,23 @@ Your music, your library, your rules.
 
 - **High-Quality Audio Downloads** - Download playlists as FLAC,
   MP3, or Opus with configurable quality settings.
+- **Apple Music Import** - Paste a public Apple Music playlist
+  link; each track is matched to YouTube or SoundCloud audio.
 - **iTunes Metadata Tagging** - Automatically embeds title, artist,
   album, track number, album art, and more via ffmpeg.
+- **Inline Metadata Editor** - Edit title, artist, and genre across
+  one or many selected tracks; changes are written straight into
+  the audio file tags (no re-encode).
 - **Built-In Music Player** - Full playback with seek, shuffle,
-  repeat, volume control, and keyboard media key support.
-- **Customizable Track Ordering** - Auto-generates a
-  `track-order.txt` file per playlist that you can edit to
-  reorder tracks.
+  repeat, crossfade, volume control, a waveform visualizer, and
+  keyboard media key support.
+- **Device Sync (iPod)** - Create a device, assign playlists, and
+  mirror them into a folder ready to drag into iTunes; staged vs.
+  transferred tracks are tracked per device.
+- **Drag-and-Drop Import** - Drop local audio files/folders onto
+  the window to add them, or drop a playlist URL to fetch it.
+- **Album Art & Color** - Refresh or replace per-track artwork, with
+  a dominant-color tint behind Now Playing.
 - **Library Management** - Browse, search, filter by playlist,
   verify files on disk, and bulk delete tracks.
 - **Concurrent Downloads** - Configurable parallel download queue
@@ -47,10 +59,11 @@ Your music, your library, your rules.
 ## Getting Started
 
 1. Download the latest release for your platform from
-   [GitHub Releases](https://github.com/nathanialhenniges/tuneVault/releases).
+   [GitHub Releases](https://github.com/nathanialhenniges/tunevault/releases).
 2. Install and launch TuneVault.
 3. Go to Settings and set your music output directory.
-4. Paste a YouTube playlist URL into the Fetch Playlist input.
+4. Paste a YouTube or public Apple Music playlist URL into the
+   Fetch Playlist input.
 5. Click Download All or select specific tracks to download.
 
 ## Usage
@@ -98,8 +111,8 @@ and player queue -- just reorder or remove lines and reload.
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/nathanialhenniges/tuneVault.git
-cd tuneVault
+git clone https://github.com/nathanialhenniges/tunevault.git
+cd tunevault
 ```
 
 2. Install dependencies:
@@ -133,6 +146,9 @@ npm run dev
 - `npm run dist:linux` - Build Linux AppImage and deb.
 - `npm run download-binaries` - Fetch yt-dlp, ffmpeg, and
   ffprobe for the current platform.
+- `npm test` - Run the Vitest unit tests.
+- `npm run typecheck` - Type-check main, preload, and renderer
+  without emitting.
 
 ### Code Quality
 
@@ -147,7 +163,7 @@ npm run dev
 ## Project Structure
 
 ```
-tuneVault/
+tunevault/
 ├── src/
 │   ├── main/              # Electron main process
 │   │   ├── ipc/           # IPC handler registration
@@ -157,7 +173,7 @@ tuneVault/
 │   ├── preload/           # Secure context bridge (window.api)
 │   ├── renderer/          # React frontend
 │   │   └── src/
-│   │       ├── components/ # UI components (player, library, playlist, settings)
+│   │       ├── components/ # UI components (player, library, playlist, device, settings)
 │   │       ├── hooks/      # Custom React hooks
 │   │       ├── lib/        # Audio engine, API types
 │   │       ├── store/      # Zustand stores

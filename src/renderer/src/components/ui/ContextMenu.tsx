@@ -25,10 +25,32 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
       }
     }
     const handleKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      // Roving focus across the menu items for keyboard/AT users.
+      const btns = menuRef.current ? Array.from(menuRef.current.querySelectorAll('button')) : []
+      if (!btns.length) return
+      const cur = btns.indexOf(document.activeElement as HTMLButtonElement)
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        btns[(cur + 1 + btns.length) % btns.length].focus()
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        btns[(cur - 1 + btns.length) % btns.length].focus()
+      } else if (e.key === 'Home') {
+        e.preventDefault()
+        btns[0].focus()
+      } else if (e.key === 'End') {
+        e.preventDefault()
+        btns[btns.length - 1].focus()
+      }
     }
     window.addEventListener('mousedown', handleClick)
     window.addEventListener('keydown', handleKey)
+    // Move focus into the menu so arrow keys / Enter work immediately.
+    menuRef.current?.querySelector('button')?.focus()
     return () => {
       window.removeEventListener('mousedown', handleClick)
       window.removeEventListener('keydown', handleKey)
@@ -61,10 +83,11 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
   // route wrapper holds a transform during/after its enter animation, which
   // would otherwise become the containing block and offset the menu.
   return createPortal(
-    <div ref={menuRef} style={style} className="min-w-[180px] py-1.5 px-1 glass-float glass-border-float glass-reveal">
+    <div ref={menuRef} role="menu" aria-orientation="vertical" style={style} className="min-w-[180px] py-1.5 px-1 glass-float glass-border-float glass-reveal">
       {items.map((item, i) => (
         <button
           key={i}
+          role="menuitem"
           onClick={() => { item.onClick(); onClose() }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition rounded-[var(--radius-item)] ${
             item.danger

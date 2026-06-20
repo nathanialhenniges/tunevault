@@ -47,7 +47,8 @@ export function Segmented<T extends string | number>({
     }
   }
 
-  const seg = size === 'sm' ? 'w-9 h-8 justify-center' : 'px-3.5 h-8'
+  // sm: square-ish but min-width so a 3-digit/longer label can grow instead of clipping.
+  const seg = size === 'sm' ? 'min-w-9 px-2 h-8 justify-center' : 'px-3.5 h-8'
 
   return (
     <div

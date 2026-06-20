@@ -31,11 +31,16 @@ export function MainLayout({ children }: MainLayoutProps): JSX.Element {
     }
   }, [navigate])
 
-  // Cmd/Ctrl+1..5 view navigation
+  // Cmd/Ctrl+1..6 view navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       // Don't steal Cmd/Ctrl+digit while typing in a field (matches useKeyboardShortcuts).
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      )
+        return
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return
       const n = Number(e.key)
       if (n >= 1 && n <= VIEW_PATHS.length) {

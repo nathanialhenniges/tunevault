@@ -29,7 +29,10 @@ export function registerPlaylistIpc(): void {
     const playlist = isApple
       ? await apple.fetchPlaylist(playlistUrl)
       : await yt.fetchPlaylist(playlistUrl)
-    playlistCache.set(playlist.id, { playlist, cachedAt: Date.now() })
+    // Write under the SAME key we read with — for Apple Music cacheKey is the URL
+    // while playlist.id is "pl.xxx", so keying on playlist.id here meant the cache
+    // never hit and every fetch re-scraped.
+    playlistCache.set(cacheKey, { playlist, cachedAt: Date.now() })
     return playlist
   })
 }

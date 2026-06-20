@@ -14,7 +14,11 @@ export function ToastContainer(): JSX.Element {
   if (toasts.length === 0) return <></>
 
   return (
-    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none">
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none"
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -22,7 +26,8 @@ export function ToastContainer(): JSX.Element {
           style={{ maxWidth: 360 }}
         >
           {iconMap[t.type]}
-          <span className="flex-1 min-w-0 truncate">{t.message}</span>
+          {/* Wrap (don't truncate) so a full error message stays readable. */}
+          <span className="flex-1 min-w-0 break-words line-clamp-3">{t.message}</span>
           <button onClick={() => dismiss(t.id)} className="text-text-muted hover:text-text-primary transition shrink-0">
             <XMarkIcon className="w-3.5 h-3.5" />
           </button>
