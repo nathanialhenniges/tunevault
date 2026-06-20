@@ -107,16 +107,42 @@ const api = {
   },
   // Resolve a dropped File to its absolute path (Electron-only API).
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
-  importPaths: (paths: string[]): Promise<{ imported: number; playlists: number }> =>
-    ipcRenderer.invoke(IpcChannels.LIBRARY_IMPORT, paths),
+  importPaths: (
+    paths: string[],
+    decision?: 'keep' | 'overwrite' | 'skip'
+  ): Promise<{ imported: number; playlists: number; needsDecision?: boolean; conflicts?: string[] }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_IMPORT, paths, decision),
   createDeviceFolder: (name: string): Promise<Device> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_CREATE_DEVICE, name),
   deleteDeviceFolder: (dir: string): Promise<void> =>
     ipcRenderer.invoke(IpcChannels.LIBRARY_DELETE_DEVICE, dir),
   syncDevice: (
-    device: Device
-  ): Promise<{ playlists: number; copied: number; total: number; genreTagged: number; removed: number }> =>
-    ipcRenderer.invoke(IpcChannels.LIBRARY_SYNC_DEVICE, device),
+    device: Device,
+    opts?: { reveal?: boolean }
+  ): Promise<{
+    playlists: number
+    copied: number
+    total: number
+    genreTagged: number
+    removed: number
+    skippedMoved: number
+  }> => ipcRenderer.invoke(IpcChannels.LIBRARY_SYNC_DEVICE, device, opts),
+  archiveDevice: (device: Device): Promise<{ moved: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_DEVICE_ARCHIVE, device),
+  deviceStatus: (dir: string): Promise<{ live: number; moved: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_DEVICE_STATUS, dir),
+  clearDevice: (device: Device, which: 'moved' | 'live' | 'all'): Promise<{ deleted: number }> =>
+    ipcRenderer.invoke(IpcChannels.LIBRARY_DEVICE_CLEAR, device, which),
+  onSyncDeviceProgress: (
+    cb: (p: { deviceId: string; current: number; total: number; label?: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _e: unknown,
+      p: { deviceId: string; current: number; total: number; label?: string }
+    ): void => cb(p)
+    ipcRenderer.on(IpcChannels.LIBRARY_SYNC_DEVICE_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IpcChannels.LIBRARY_SYNC_DEVICE_PROGRESS, handler)
+  },
 
   // Player
   getFileUrl: (filePath: string): Promise<string> =>

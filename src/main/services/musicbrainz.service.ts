@@ -91,7 +91,46 @@ export class MusicBrainzService {
       return sorted[0]?.name ?? null
     }
     const name = top(rec?.genres) || top(rec?.tags)
-    const genre = name ? name.replace(/\b\w/g, (c) => c.toUpperCase()) : null
-    return { genre, coverUrl, mbArtist }
+    let genre = name ? name.replace(/\b\w/g, (c) => c.toUpperCase()) : null
+
+    // iTunes fallback — MusicBrainz genre/art coverage is thin for a lot of
+    // electronic/indie tracks. iTunes Search is generous, keyless, and almost
+    // always has high-res art for anything remotely mainstream.
+    let cover = coverUrl
+    let artistOut = mbArtist
+    if (!genre || !cover) {
+      const it = await this.lookupItunes(usable ? artist : '', title)
+      if (it) {
+        genre = genre || it.genre
+        cover = cover || it.coverUrl
+        artistOut = artistOut || it.artist
+      }
+    }
+    return { genre, coverUrl: cover, mbArtist: artistOut }
+  }
+
+  /**
+   * iTunes Search API fallback. No key needed. Returns the top song match's
+   * genre + a 600x600 cover (upsized from the 100x100 the API hands back).
+   * Term = "artist title" when we have a usable artist, else just the title
+   * (which also covers "Title - Artist" filename junk — iTunes fuzzy-matches it).
+   */
+  private async lookupItunes(
+    artist: string,
+    title: string
+  ): Promise<{ genre: string | null; coverUrl: string | null; artist: string | null } | null> {
+    const term = [artist, title].filter(Boolean).join(' ').trim()
+    if (!term) return null
+    const json = await this.getJson(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=1`
+    )
+    const results = json?.results as Array<Record<string, unknown>> | undefined
+    const r = results?.[0]
+    if (!r) return null
+    const genre = typeof r.primaryGenreName === 'string' ? r.primaryGenreName : null
+    const art100 = typeof r.artworkUrl100 === 'string' ? r.artworkUrl100 : null
+    const coverUrl = art100 ? art100.replace(/100x100(bb)?\.(jpg|png)/, '600x600$1.$2') : null
+    const itArtist = typeof r.artistName === 'string' ? r.artistName : null
+    return { genre, coverUrl, artist: itArtist }
   }
 }

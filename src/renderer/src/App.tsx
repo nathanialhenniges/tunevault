@@ -14,6 +14,7 @@ import { useWolfModeStore } from './hooks/useWolfMode'
 import { DisclaimerModal } from './components/ui/DisclaimerModal'
 import { KeyboardShortcutsModal } from './components/ui/KeyboardShortcutsModal'
 import { ToastContainer } from './components/ui/ToastContainer'
+import { ImportConflictModal } from './components/ui/ImportConflictModal'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { Visualizer } from './components/player/Visualizer'
 import { useVisualizerStore } from './store/visualizerStore'
@@ -96,6 +97,7 @@ export default function App(): JSX.Element {
         <PlayerBar />
         <DisclaimerModal />
         <KeyboardShortcutsModal />
+        <ImportConflictModal />
         <ToastContainer />
       </div>
     </MemoryRouter>

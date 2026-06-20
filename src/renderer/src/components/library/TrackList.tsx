@@ -103,7 +103,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
         {track.filePath && (
           <button
             onClick={() => onOpenFolder(track.filePath!)}
-            className="text-text-muted hover:text-accent transition p-1 rounded"
+            className="text-text-muted hover:text-accent transition p-1.5 rounded"
             title="Show in folder"
           >
             <FolderOpenIcon className="w-4 h-4" />
@@ -113,14 +113,14 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
           <div className="flex gap-0.5">
             <button
               onClick={() => onDeleteOne(track.id)}
-              className="text-red-500 hover:text-red-400 transition p-1"
+              className="text-red-500 hover:text-red-400 transition p-1.5"
               title="Confirm delete"
             >
               <CheckIcon className="w-4 h-4" />
             </button>
             <button
               onClick={() => onConfirmDelete(null)}
-              className="text-text-muted hover:text-text-primary transition p-1"
+              className="text-text-muted hover:text-text-primary transition p-1.5"
               title="Cancel"
             >
               <XMarkIcon className="w-4 h-4" />
@@ -129,7 +129,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
         ) : (
           <button
             onClick={() => onConfirmDelete(track.id)}
-            className="text-text-muted hover:text-red-500 transition p-1 rounded"
+            className="text-text-muted hover:text-red-500 transition p-1.5 rounded"
             title="Delete track"
           >
             <TrashIcon className="w-4 h-4" />
@@ -139,8 +139,19 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
     </div>
   )
 }, (prev, next) => {
+  const a = prev.track
+  const b = next.track
   return (
-    prev.track.id === next.track.id &&
+    a.id === b.id &&
+    // Re-render when any rendered field changes (live metadata patches, reloads).
+    a.title === b.title &&
+    a.artist === b.artist &&
+    a.genre === b.genre &&
+    a.thumbnailUrl === b.thumbnailUrl &&
+    a.playlistTitle === b.playlistTitle &&
+    a.duration === b.duration &&
+    a.bitrate === b.bitrate &&
+    a.filePath === b.filePath &&
     prev.isCurrent === next.isCurrent &&
     prev.isSelected === next.isSelected &&
     prev.index === next.index &&

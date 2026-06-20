@@ -1,4 +1,5 @@
 import { ipcMain, shell } from 'electron'
+import { createHash } from 'crypto'
 import { basename, dirname, extname, join, resolve, sep } from 'path'
 import {
   statSync,
@@ -8,6 +9,7 @@ import {
   mkdirSync,
   copyFileSync,
   writeFileSync,
+  renameSync,
   rmSync
 } from 'fs'
 import { IpcChannels } from '../../shared/ipc-channels'
@@ -163,66 +165,108 @@ export function registerLibraryIpc(): void {
     rmSync(target, { recursive: true, force: true })
   })
 
-  ipcMain.handle(IpcChannels.LIBRARY_SYNC_DEVICE, async (_event, device: Device) => {
-    if (!device || !device.dir) throw new Error('Invalid device.')
-    const settings = SettingsService.load()
-    if (!settings.musicDir) throw new Error('Set your music folder in Settings first.')
-    // Safety: a device folder must live under <musicDir>/Devices/.
-    const base = resolve(join(settings.musicDir, 'Devices'))
-    const root = resolve(device.dir)
-    if (root !== base && !root.startsWith(base + sep)) {
-      throw new Error('Device folder is outside TuneVault/Devices.')
-    }
-    mkdirSync(root, { recursive: true })
-
-    const data = library.load()
-    const assigned = (device.playlistIds || [])
-      .map((id) => data.playlists.find((p) => p.id === id))
-      .filter((p): p is NonNullable<typeof p> => !!p)
-    const assignedFolders = new Set(assigned.map((p) => sanitizeFilename(p.title)))
-
-    // Mirror: drop folders for playlists no longer assigned to this device.
-    let removed = 0
-    for (const entry of readdirSync(root)) {
-      const full = join(root, entry)
-      try {
-        if (statSync(full).isDirectory() && !assignedFolders.has(entry)) {
-          rmSync(full, { recursive: true, force: true })
-          removed++
-        }
-      } catch {
-        /* ignore */
+  ipcMain.handle(
+    IpcChannels.LIBRARY_SYNC_DEVICE,
+    async (event, device: Device, opts?: { reveal?: boolean }) => {
+      if (!device || !device.dir) throw new Error('Invalid device.')
+      const reveal = opts?.reveal !== false // default: reveal in Finder (manual Sync)
+      const settings = SettingsService.load()
+      if (!settings.musicDir) throw new Error('Set your music folder in Settings first.')
+      // Safety: a device folder must live under <musicDir>/Devices/.
+      const base = resolve(join(settings.musicDir, 'Devices'))
+      const root = resolve(device.dir)
+      if (root !== base && !root.startsWith(base + sep)) {
+        throw new Error('Device folder is outside TuneVault/Devices.')
       }
-    }
+      mkdirSync(root, { recursive: true })
 
-    const ffmpeg = new FfmpegService()
-    const mb = new MusicBrainzService()
-    const metaCache = new Map<string, MbMeta>()
-    let copied = 0
-    let total = 0
-    let genreTagged = 0
+      const data = library.load()
+      const assigned = (device.playlistIds || [])
+        .map((id) => data.playlists.find((p) => p.id === id))
+        .filter((p): p is NonNullable<typeof p> => !!p)
 
-    for (const pl of assigned) {
-      const tracks = pl.tracks
-        .filter((t) => t.filePath && existsSync(t.filePath))
-        .sort((a, b) => a.position - b.position)
-      total += tracks.length
-      // Wipe + rebuild the playlist folder so removed tracks disappear (true mirror).
-      const destDir = join(root, sanitizeFilename(pl.title))
-      rmSync(destDir, { recursive: true, force: true })
-      mkdirSync(destDir, { recursive: true })
-      const m3uEntries: { duration: number; artist: string; title: string; fileName: string }[] = []
-      for (const t of tracks) {
-        const fileName = basename(t.filePath!)
-        const destFile = join(destDir, fileName)
+      // Tracks already transferred to the iPod live in <root>/.moved/. Treat them
+      // as done — don't recopy them into the live folder.
+      const movedDir = join(root, '.moved')
+      const alreadyMoved = new Set<string>()
+      if (existsSync(movedDir)) {
+        for (const f of readdirSync(movedDir)) alreadyMoved.add(f.toLowerCase())
+      }
+
+      // Flat layout: every assigned track lands directly in the device root so
+      // it's a single drag into iTunes. Collect the full ordered set first so we
+      // can resolve filename collisions across playlists deterministically.
+      const queued: { src: string; fileName: string; track: Track }[] = []
+      const used = new Set<string>()
+      let skippedMoved = 0
+      for (const pl of assigned) {
+        const tracks = pl.tracks
+          .filter((t) => t.filePath && existsSync(t.filePath))
+          .sort((a, b) => a.position - b.position)
+        for (const t of tracks) {
+          const orig = basename(t.filePath!)
+          if (alreadyMoved.has(orig.toLowerCase())) {
+            skippedMoved++
+            continue
+          }
+          const ext = extname(orig)
+          const stem = orig.slice(0, orig.length - ext.length)
+          let fileName = orig
+          let n = 2
+          while (used.has(fileName.toLowerCase())) fileName = `${stem} (${n++})${ext}`
+          used.add(fileName.toLowerCase())
+          queued.push({ src: t.filePath!, fileName, track: t })
+        }
+      }
+      const total = queued.length
+      const wanted = new Set(queued.map((q) => q.fileName))
+
+      // Mirror: drop any file/folder in root that isn't part of the new flat set
+      // (stale tracks, old per-playlist subfolders from a previous version).
+      let removed = 0
+      for (const entry of readdirSync(root)) {
+        if (entry === '.moved') continue // archived ("on iPod") tracks — never prune
+        if (entry === `${sanitizeFilename(device.name)}.m3u8`) continue
+        if (wanted.has(entry)) continue
         try {
-          copyFileSync(t.filePath!, destFile)
+          rmSync(join(root, entry), { recursive: true, force: true })
+          removed++
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const ffmpeg = new FfmpegService()
+      const mb = new MusicBrainzService()
+      const metaCache = new Map<string, MbMeta>()
+      let copied = 0
+      let genreTagged = 0
+      let current = 0
+      event.sender.send(IpcChannels.LIBRARY_SYNC_DEVICE_PROGRESS, { deviceId: device.id, current, total })
+
+      const m3uEntries: { duration: number; artist: string; title: string; fileName: string }[] = []
+      for (const q of queued) {
+        current++
+        event.sender.send(IpcChannels.LIBRARY_SYNC_DEVICE_PROGRESS, {
+          deviceId: device.id,
+          current,
+          total,
+          label: q.track.title
+        })
+        const destFile = join(root, q.fileName)
+        try {
+          copyFileSync(q.src, destFile)
           copied++
-          m3uEntries.push({ duration: t.duration, artist: t.artist, title: t.title, fileName })
+          m3uEntries.push({
+            duration: q.track.duration,
+            artist: q.track.artist,
+            title: q.track.title,
+            fileName: q.fileName
+          })
         } catch {
           continue
         }
-        const genre = t.genre ?? (await lookupMetaCached(mb, metaCache, t.artist, t.title)).genre
+        const genre = q.track.genre ?? (await lookupMetaCached(mb, metaCache, q.track.artist, q.track.title)).genre
         if (genre) {
           try {
             await ffmpeg.setGenre(destFile, genre)
@@ -232,14 +276,105 @@ export function registerLibraryIpc(): void {
           }
         }
       }
-      writeFileSync(join(destDir, `${sanitizeFilename(pl.title)}.m3u8`), buildM3U(m3uEntries), 'utf-8')
-    }
+      writeFileSync(join(root, `${sanitizeFilename(device.name)}.m3u8`), buildM3U(m3uEntries), 'utf-8')
 
-    shell.openPath(root)
-    return { playlists: assigned.length, copied, total, genreTagged, removed }
+      event.sender.send(IpcChannels.LIBRARY_SYNC_DEVICE_PROGRESS, { deviceId: device.id, current: total, total })
+      if (reveal) shell.openPath(root)
+      // ponytail: full recopy each sync. Fine for typical libraries; add a
+      // size/mtime skip if device folders get large.
+      return { playlists: assigned.length, copied, total, genreTagged, removed, skippedMoved }
+    }
+  )
+
+  // Mark-as-transferred: move everything currently in the live device folder
+  // into <root>/.moved/. After you drag the folder into iTunes, this clears it
+  // out (recoverably) and future syncs skip those tracks.
+  ipcMain.handle(IpcChannels.LIBRARY_DEVICE_ARCHIVE, async (_event, device: Device) => {
+    if (!device || !device.dir) throw new Error('Invalid device.')
+    const settings = SettingsService.load()
+    if (!settings.musicDir) throw new Error('Set your music folder in Settings first.')
+    const base = resolve(join(settings.musicDir, 'Devices'))
+    const root = resolve(device.dir)
+    if (root !== base && !root.startsWith(base + sep)) {
+      throw new Error('Device folder is outside TuneVault/Devices.')
+    }
+    if (!existsSync(root)) return { moved: 0 }
+    const movedDir = join(root, '.moved')
+    mkdirSync(movedDir, { recursive: true })
+
+    let moved = 0
+    for (const entry of readdirSync(root)) {
+      if (entry === '.moved') continue
+      const full = join(root, entry)
+      try {
+        if (!statSync(full).isFile()) continue
+        if (!AUDIO_EXT.has(extname(entry).toLowerCase())) {
+          rmSync(full, { force: true }) // stale .m3u8 etc — drop it
+          continue
+        }
+        const dest = join(movedDir, entry)
+        if (existsSync(dest)) rmSync(dest, { force: true }) // rename won't overwrite on Windows
+        renameSync(full, dest)
+        moved++
+      } catch {
+        /* ignore */
+      }
+    }
+    return { moved }
   })
 
-  ipcMain.handle(IpcChannels.LIBRARY_IMPORT, async (_event, paths: string[]) => {
+  // Delete audio files from a device folder. which='moved' clears the .moved
+  // archive, 'live' clears staged files in the root, 'all' does both. These are
+  // copies — library originals are untouched.
+  ipcMain.handle(
+    IpcChannels.LIBRARY_DEVICE_CLEAR,
+    async (_event, device: Device, which: 'moved' | 'live' | 'all') => {
+      if (!device || !device.dir) throw new Error('Invalid device.')
+      const settings = SettingsService.load()
+      if (!settings.musicDir) throw new Error('Set your music folder in Settings first.')
+      const base = resolve(join(settings.musicDir, 'Devices'))
+      const root = resolve(device.dir)
+      if (root !== base && !root.startsWith(base + sep)) {
+        throw new Error('Device folder is outside TuneVault/Devices.')
+      }
+      let deleted = 0
+      const clearDir = (d: string, audioOnly: boolean): void => {
+        if (!existsSync(d)) return
+        for (const entry of readdirSync(d)) {
+          if (entry === '.moved' && d === root) continue
+          const full = join(d, entry)
+          try {
+            if (audioOnly && !AUDIO_EXT.has(extname(entry).toLowerCase())) continue
+            rmSync(full, { recursive: true, force: true })
+            deleted++
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (which === 'moved' || which === 'all') clearDir(join(root, '.moved'), false)
+      if (which === 'live' || which === 'all') clearDir(root, true)
+      return { deleted }
+    }
+  )
+
+  // How many tracks are sitting in the live folder vs already moved to the iPod.
+  ipcMain.handle(IpcChannels.LIBRARY_DEVICE_STATUS, async (_event, dir: string) => {
+    try {
+      const root = resolve(dir)
+      const isAudio = (n: string): boolean => AUDIO_EXT.has(extname(n).toLowerCase())
+      const live = existsSync(root) ? readdirSync(root).filter(isAudio).length : 0
+      const movedDir = join(root, '.moved')
+      const moved = existsSync(movedDir) ? readdirSync(movedDir).filter(isAudio).length : 0
+      return { live, moved }
+    } catch {
+      return { live: 0, moved: 0 }
+    }
+  })
+
+  ipcMain.handle(
+    IpcChannels.LIBRARY_IMPORT,
+    async (_event, paths: string[], decision?: 'keep' | 'overwrite' | 'skip') => {
     if (!Array.isArray(paths) || !paths.length) return { imported: 0, playlists: 0 }
     const settings = SettingsService.load()
     if (!settings.musicDir) throw new Error('Set your music folder in Settings first.')
@@ -263,10 +398,45 @@ export function registerLibraryIpc(): void {
       }
     }
 
+    // Dedup by content hash. Existing library tracks carry a fileHash once
+    // imported through this path; match against it to spot re-imports.
+    const hashes = new Map<string, string>() // src path -> sha1
+    const hashOf = (p: string): string => {
+      const hit = hashes.get(p)
+      if (hit) return hit
+      const h = createHash('sha1').update(readFileSync(p)).digest('hex')
+      hashes.set(p, h)
+      return h
+    }
+    const existing = new Map<string, string>() // sha1 -> trackId
+    for (const pl of library.load().playlists) {
+      for (const t of pl.tracks) if (t.fileHash) existing.set(t.fileHash, t.id)
+    }
+    const allFiles = [...groups.values()].flatMap((g) => g.files)
+    const conflicts = allFiles.filter((f) => {
+      try {
+        return existing.has(hashOf(f))
+      } catch {
+        return false
+      }
+    })
+    // Dupes found but no decision yet — ask the renderer how to handle them.
+    if (conflicts.length && !decision) {
+      return { imported: 0, playlists: 0, needsDecision: true, conflicts: conflicts.map((f) => basename(f)) }
+    }
+    // Overwrite: drop the existing duplicates (files + library rows) up front,
+    // then import everything fresh below.
+    if (decision === 'overwrite' && conflicts.length) {
+      const ids = [...new Set(conflicts.map((f) => existing.get(hashOf(f))!).filter(Boolean))]
+      if (ids.length) library.deleteTracks(ids)
+    }
+    const skipSet = decision === 'skip' ? new Set(conflicts) : new Set<string>()
+
     let imported = 0
     let playlistCount = 0
     for (const { title, files } of groups.values()) {
-      if (!files.length) continue
+      const usableFiles = files.filter((f) => !skipSet.has(f))
+      if (!usableFiles.length) continue
       playlistCount++
       const playlistId = `imported:${sanitizeFilename(title)}`
       const playlist = {
@@ -282,7 +452,7 @@ export function registerLibraryIpc(): void {
 
       const tracks: Track[] = []
       let pos = 0
-      for (const f of files) {
+      for (const f of usableFiles) {
         pos++
         const meta = await ffmpeg.probe(f)
         const t = meta.title || basename(f, extname(f))
@@ -318,7 +488,8 @@ export function registerLibraryIpc(): void {
           filePath: destPath,
           downloadedAt: new Date().toISOString(),
           bitrate: meta.bitrate,
-          genre: meta.genre
+          genre: meta.genre,
+          fileHash: hashes.get(f)
         })
         imported++
       }

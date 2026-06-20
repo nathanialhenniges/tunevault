@@ -135,7 +135,7 @@ a:not([href^="http"]) {
 
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
-  --text-muted: #76767f; /* AA (~4.5:1) on dark — used for real secondary info */
+  --text-muted: #86868f; /* AA (~5.0:1) on dark — used for real secondary info */
   --text-inverted: #09090b;
 
   --scrollbar-thumb: #23232a;

@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react'
-import { toast } from '../store/toastStore'
-import { useLibraryStore } from '../store/libraryStore'
+import { useImportStore } from '../store/importStore'
 import { usePlaylistStore } from '../store/playlistStore'
 
 interface ImportDrop {
@@ -45,17 +44,8 @@ export function useImportDrop(): ImportDrop {
     if (files.length) {
       const paths = files.map((f) => window.api.pathForFile(f)).filter(Boolean)
       if (paths.length) {
-        window.api
-          .importPaths(paths)
-          .then((r) => {
-            if (r.imported > 0) {
-              useLibraryStore.getState().load()
-              toast.success(`Imported ${r.imported} tracks into ${r.playlists} playlist(s)`)
-            } else {
-              toast.error('No audio files found to import')
-            }
-          })
-          .catch((err) => toast.error((err as Error).message))
+        // run() handles the dupe prompt + retry + toasts itself.
+        useImportStore.getState().run(paths)
         return
       }
     }

@@ -511,7 +511,7 @@ export function LibraryView(): JSX.Element {
             <button
               type="submit"
               disabled={!(renameValue ?? '').trim()}
-              className="px-4 py-2 text-sm text-white bg-accent hover:opacity-90 rounded-lg transition disabled:opacity-40"
+              className="px-4 py-2 text-sm text-text-inverted bg-accent hover:opacity-90 rounded-lg transition disabled:opacity-40"
             >
               Rename
             </button>

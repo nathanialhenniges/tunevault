@@ -31,6 +31,10 @@ export const IpcChannels = {
   LIBRARY_CREATE_DEVICE: 'library:create-device',
   LIBRARY_DELETE_DEVICE: 'library:delete-device',
   LIBRARY_SYNC_DEVICE: 'library:sync-device',
+  LIBRARY_SYNC_DEVICE_PROGRESS: 'library:sync-device-progress',
+  LIBRARY_DEVICE_ARCHIVE: 'library:device-archive',
+  LIBRARY_DEVICE_STATUS: 'library:device-status',
+  LIBRARY_DEVICE_CLEAR: 'library:device-clear',
 
   // Player
   PLAYER_GET_FILE_URL: 'player:get-file-url',
