@@ -268,29 +268,39 @@ export class FfmpegService {
     }
   }
 
-  private downloadFile(url: string, destPath: string): Promise<void> {
+  private downloadFile(url: string, destPath: string, redirects = 0): Promise<void> {
     return new Promise((resolve, reject) => {
+      if (redirects > 5) {
+        reject(new Error('Too many redirects'))
+        return
+      }
       const client = url.startsWith('https') ? https : http
-      const file = createWriteStream(destPath)
-
-      client.get(url, (response) => {
-        // Follow redirects
-        if (response.statusCode === 301 || response.statusCode === 302) {
-          const redirectUrl = response.headers.location
-          if (redirectUrl) {
-            file.close()
-            this.downloadFile(redirectUrl, destPath).then(resolve).catch(reject)
-            return
-          }
+      const req = client.get(url, (response) => {
+        const status = response.statusCode ?? 0
+        // Follow redirects (301/302/303/307/308), resolving relative Locations.
+        if (status >= 300 && status < 400 && response.headers.location) {
+          response.resume() // drain so the socket frees
+          const next = new URL(response.headers.location, url).href
+          this.downloadFile(next, destPath, redirects + 1).then(resolve).catch(reject)
+          return
         }
-
+        // Reject error responses instead of piping the error body to disk.
+        if (status < 200 || status >= 300) {
+          response.resume()
+          reject(new Error(`Request failed with status ${status}`))
+          return
+        }
+        const file = createWriteStream(destPath)
         response.pipe(file)
-        file.on('finish', () => {
+        file.on('finish', () => file.close(() => resolve()))
+        file.on('error', (err) => {
           file.close()
-          resolve()
+          if (existsSync(destPath)) unlinkSync(destPath)
+          reject(err)
         })
-      }).on('error', (err) => {
-        file.close()
+      })
+      req.setTimeout(30_000, () => req.destroy(new Error('Request timed out')))
+      req.on('error', (err) => {
         if (existsSync(destPath)) unlinkSync(destPath)
         reject(err)
       })
@@ -313,11 +323,5 @@ export class FfmpegService {
 
       proc.on('error', reject)
     })
-  }
-
-  private formatDuration(seconds: number): string {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    return `${m}:${String(s).padStart(2, '0')}`
   }
 }

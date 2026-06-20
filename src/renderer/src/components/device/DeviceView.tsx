@@ -41,7 +41,8 @@ export function DeviceView(): JSX.Element {
   const toggleExpanded = (id: string): void =>
     setExpanded((s) => {
       const next = new Set(s)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
 
@@ -54,11 +55,13 @@ export function DeviceView(): JSX.Element {
     setStatus((prev) => ({ ...prev, [device.id]: s }))
   }
 
-  // Pull folder status for every device once they're known.
+  // Pull folder status for every device. Keyed on an id+dir signature (not
+  // devices.length) so swapping or renaming a device's folder still refreshes.
+  const deviceSig = devices.map((d) => `${d.id}:${d.dir}`).join('|')
   useEffect(() => {
     devices.forEach((d) => void refreshStatus(d))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [devices.length])
+  }, [deviceSig])
 
   // Live per-device copy progress (mirrors the metadata-fetch pattern).
   useEffect(
@@ -256,6 +259,8 @@ export function DeviceView(): JSX.Element {
                         : 'bg-glass-hover hover:bg-glass-active'
                     }`}
                     title="Manage folder"
+                    aria-label={`Manage ${device.name} folder`}
+                    aria-expanded={expanded.has(device.id)}
                   >
                     <EllipsisHorizontalIcon className="w-4 h-4" />
                   </button>
@@ -263,6 +268,7 @@ export function DeviceView(): JSX.Element {
                     onClick={() => setConfirmDelete(device)}
                     className="px-2.5 py-1.5 text-xs text-red-500 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg btn-press"
                     title="Delete device"
+                    aria-label={`Delete ${device.name}`}
                   >
                     <TrashIcon className="w-4 h-4" />
                   </button>
@@ -309,6 +315,7 @@ export function DeviceView(): JSX.Element {
                           onClick={() => toggleAndSync(device, p.id)}
                           className="hover:text-red-500"
                           title="Remove from device"
+                          aria-label={`Remove ${p.title} from ${device.name}`}
                         >
                           <XMarkIcon className="w-3.5 h-3.5" />
                         </button>
@@ -318,6 +325,7 @@ export function DeviceView(): JSX.Element {
                   {available.length > 0 && (
                     <select
                       value=""
+                      aria-label={`Add a playlist to ${device.name}`}
                       onChange={(e) => {
                         if (e.target.value) toggleAndSync(device, e.target.value)
                       }}

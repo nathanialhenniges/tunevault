@@ -1,5 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { formatDate, formatDuration, sanitizeFilename, trackFileBaseName, buildM3U } from './utils'
+import {
+  formatDate,
+  formatDuration,
+  sanitizeFilename,
+  trackFileBaseName,
+  buildM3U,
+  isRateLimitMessage
+} from './utils'
+
+describe('isRateLimitMessage', () => {
+  it('detects the propagated RATE_LIMITED marker and raw 429s', () => {
+    expect(isRateLimitMessage('RATE_LIMITED')).toBe(true)
+    expect(isRateLimitMessage('HTTP Error 429: Too Many Requests')).toBe(true)
+  })
+
+  it('detects rate-limit phrasing case-insensitively', () => {
+    expect(isRateLimitMessage('ERROR: Too Many Requests')).toBe(true)
+    expect(isRateLimitMessage('you hit the rate limit')).toBe(true)
+  })
+
+  it('does not flag ordinary errors', () => {
+    expect(isRateLimitMessage('yt-dlp exited with code 1')).toBe(false)
+    expect(isRateLimitMessage('Video unavailable')).toBe(false)
+  })
+})
 
 describe('buildM3U', () => {
   it('emits extended M3U with rounded durations and relative filenames', () => {
@@ -59,6 +83,15 @@ describe('formatDate', () => {
   it('handles December (month index 11)', () => {
     expect(formatDate('20231231', 'DD Mon YYYY')).toBe('31 Dec 2023')
   })
+
+  it('returns the raw value for input that is not date-like', () => {
+    expect(formatDate('garbage', 'MM/DD/YYYY')).toBe('garbage')
+  })
+
+  it('does not throw on an 8-char string with a non-numeric month', () => {
+    // 'DD Mon YYYY' looks up MONTHS[NaN] -> undefined and falls back to the raw month.
+    expect(formatDate('2023XX15', 'DD Mon YYYY')).toBe('15 XX 2023')
+  })
 })
 
 describe('formatDuration', () => {
@@ -100,15 +133,30 @@ describe('sanitizeFilename', () => {
     expect(sanitizeFilename('My Song - Artist')).toBe('My Song - Artist')
   })
 
-  it('handles empty string', () => {
-    expect(sanitizeFilename('')).toBe('')
+  it('falls back to "untitled" for an empty string', () => {
+    expect(sanitizeFilename('')).toBe('untitled')
   })
 
-  it('handles string with only forbidden characters', () => {
-    expect(sanitizeFilename('<>:"/\\|?*')).toBe('')
+  it('falls back to "untitled" when only forbidden characters', () => {
+    expect(sanitizeFilename('<>:"/\\|?*')).toBe('untitled')
   })
 
   it('handles tabs and newlines as whitespace', () => {
     expect(sanitizeFilename('hello\t\nworld')).toBe('hello world')
+  })
+
+  // Path-traversal protection: a sanitized name must never be able to escape or
+  // hide the folder it is joined into.
+  it('neutralizes ".." so it cannot traverse up a directory', () => {
+    expect(sanitizeFilename('..')).toBe('untitled')
+  })
+
+  it('neutralizes "." ', () => {
+    expect(sanitizeFilename('.')).toBe('untitled')
+  })
+
+  it('strips leading dots so the result is never a hidden/relative entry', () => {
+    expect(sanitizeFilename('...evil')).toBe('evil')
+    expect(sanitizeFilename('../../etc/passwd')).toBe('etcpasswd')
   })
 })

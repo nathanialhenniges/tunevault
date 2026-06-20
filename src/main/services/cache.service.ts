@@ -17,6 +17,19 @@ const ensureDirs = (): void => {
 const keyFor = (url: string): string => createHash('sha1').update(url).digest('hex')
 const isRemote = (url: string): boolean => /^https?:\/\//.test(url)
 
+// Album art only ever comes from these CDNs (YouTube/Google, SoundCloud, Apple,
+// MusicBrainz cover art). Restricting fetches to them stops the renderer from
+// using tvcache:// to make the main process fetch arbitrary internal URLs (SSRF).
+const ART_HOST = /(?:^|\.)(?:ytimg\.com|ggpht\.com|googleusercontent\.com|sndcdn\.com|mzstatic\.com|scdn\.co|coverartarchive\.org|archive\.org)$/
+const isAllowedArtHost = (url: string): boolean => {
+  try {
+    return ART_HOST.test(new URL(url).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+const MAX_ART_BYTES = 10 * 1024 * 1024 // 10 MB — art is never legitimately bigger
+
 // In-memory palette cache. Re-derived cheaply from the on-disk art cache after a
 // restart, so it doesn't need to persist.
 const paletteCache = new Map<string, ArtColor | null>()
@@ -28,15 +41,17 @@ export const CacheService = {
    * the body is empty — callers fall back gracefully.
    */
   async getArtFile(url: string): Promise<string | null> {
-    if (!isRemote(url)) return null
+    if (!isRemote(url) || !isAllowedArtHost(url)) return null
     ensureDirs()
     const file = join(artDir(), keyFor(url))
     if (existsSync(file)) return file
     try {
       const res = await net.fetch(url)
       if (!res.ok) return null
+      const type = res.headers.get('content-type') || ''
+      if (type && !type.startsWith('image/')) return null
       const buf = Buffer.from(await res.arrayBuffer())
-      if (buf.length === 0) return null
+      if (buf.length === 0 || buf.length > MAX_ART_BYTES) return null
       await fsp.writeFile(file, buf)
       return file
     } catch {

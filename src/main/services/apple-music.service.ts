@@ -43,20 +43,26 @@ export class AppleMusicService {
     // YouTube first, SoundCloud as fallback.
     // ponytail: fixed concurrency 4 — bump if large playlists feel slow.
     const resolved = await mapLimit(parsed.tracks, 4, async (t): Promise<Track | null> => {
-      const hit = await this.yt.searchVideo(`${t.artist} ${t.title}`)
-      if (!hit) return null
-      return {
-        id: `${playlistId}_${hit.videoId}`,
-        videoId: hit.videoId,
-        title: t.title,
-        artist: t.artist,
-        duration: hit.duration,
-        thumbnailUrl: hit.thumbnailUrl,
-        playlistId,
-        playlistTitle: parsed.title,
-        position: t.position,
-        sourceUrl: hit.sourceUrl,
-        source: hit.source
+      // Never reject: one bad lookup must not abort the whole import (mapLimit's
+      // workers run detached, so a throw here would surface as an unhandled rejection).
+      try {
+        const hit = await this.yt.searchVideo(`${t.artist} ${t.title}`)
+        if (!hit) return null
+        return {
+          id: `${playlistId}_${hit.videoId}`,
+          videoId: hit.videoId,
+          title: t.title,
+          artist: t.artist,
+          duration: hit.duration,
+          thumbnailUrl: hit.thumbnailUrl,
+          playlistId,
+          playlistTitle: parsed.title,
+          position: t.position,
+          sourceUrl: hit.sourceUrl,
+          source: hit.source
+        }
+      } catch {
+        return null
       }
     })
 

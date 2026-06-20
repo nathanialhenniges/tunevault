@@ -624,3 +624,16 @@ input[type="range"] {
   85%  { transform: rotate(350deg) scale(1.05); }
   100% { transform: rotate(360deg) scale(1); }
 }
+
+/* Respect the OS "Reduce Motion" setting: collapse decorative animation and
+   transition to ~instant (end-states still apply via `forwards`). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

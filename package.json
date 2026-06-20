@@ -1,7 +1,7 @@
 {
   "name": "tunevault",
   "productName": "TuneVault",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "A desktop app to download YouTube playlists as high-quality audio (FLAC, MP3, Opus) with iTunes metadata tagging, a built-in music player, and customizable track ordering.",
   "main": "./out/main/index.js",
   "author": {
@@ -26,8 +26,6 @@
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.2.10",
-    "@fontsource-variable/dm-sans": "^5.2.8",
-    "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/hanken-grotesk": "^5.2.8",
     "@heroicons/react": "^2.2.0",
     "@tanstack/react-virtual": "^3.14.3",

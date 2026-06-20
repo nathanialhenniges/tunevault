@@ -6,11 +6,12 @@ import { FfmpegService } from '../services/ffmpeg.service'
 import { LibraryService } from '../services/library.service'
 import { MusicBrainzService } from '../services/musicbrainz.service'
 import type { DownloadRequest, Track, DateFormat } from '../../shared/models'
-import { formatDate } from '../../shared/utils'
+import { formatDate, isRateLimitMessage } from '../../shared/utils'
 
 const activeDownloads = new Map<string, AbortController>()
 const activeBatches = new Map<string, { cancel: () => void; remaining: number }>()
 const cancelledTracks = new Set<string>()
+let batchSeq = 0 // ensures each DOWNLOAD_START gets a unique batch id
 const RATE_LIMIT_WAIT_MS = 60_000 // Wait 60 seconds on rate limit
 const MAX_RETRIES = 3
 
@@ -50,8 +51,10 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
     let idx = 0
     let cancelled = false
 
-    // 1.2 — Track remaining items per batch for proper cleanup
-    const batchId = playlist.id
+    // 1.2 — Track remaining items per batch for proper cleanup. Use a unique id
+    // (not playlist.id) so two concurrent downloads of the same playlist don't
+    // clobber each other's batch state in activeBatches.
+    const batchId = `${playlist.id}#${++batchSeq}`
     const batchState = { cancel: () => { cancelled = true }, remaining: totalTracks }
     activeBatches.set(batchId, batchState)
 
@@ -112,7 +115,7 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
             })
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err)
-            if ((msg.includes('RATE_LIMITED') || msg.includes('429')) && retries > 0 && !cancelled) {
+            if (isRateLimitMessage(msg) && retries > 0 && !cancelled) {
               // Notify UI that we're paused due to rate limiting
               mainWindow.webContents.send(IpcChannels.DOWNLOAD_PROGRESS, {
                 trackId: track.id,
@@ -194,7 +197,9 @@ export function registerDownloadIpc(mainWindow: BrowserWindow): void {
               url: trackUrl,
               description
             }
-            library.upsertTrack(playlist, updatedTrack)
+            // Await the queued write so the track is persisted before we render
+            // playlist-info.md from it (the write queue runs on a microtask).
+            await library.upsertTrack(playlist, updatedTrack)
             library.writePlaylistInfo(ytdlp.playlistDir(outputDir, playlist.title), playlist.id)
             mainWindow.webContents.send(IpcChannels.DOWNLOAD_COMPLETE, {
               trackId: track.id,

@@ -53,6 +53,22 @@ async function lookupMetaCached(
   return meta
 }
 
+/**
+ * Throw unless `p` resolves inside the configured music directory. Guards the
+ * shell.openPath / showItemInFolder handlers so the renderer can't ask the OS to
+ * open an arbitrary path on disk.
+ */
+function assertUnderMusicDir(p: string): string {
+  const settings = SettingsService.load()
+  if (!settings.musicDir) throw new Error('Set your music folder in Settings first.')
+  const base = resolve(settings.musicDir)
+  const target = resolve(p)
+  if (target !== base && !target.startsWith(base + sep)) {
+    throw new Error('Refusing to open a path outside your music folder.')
+  }
+  return target
+}
+
 export function registerLibraryIpc(): void {
   const library = new LibraryService()
 
@@ -140,8 +156,9 @@ export function registerLibraryIpc(): void {
   })
 
   ipcMain.handle(IpcChannels.LIBRARY_OPEN_FILE, async (_event, filePath: string) => {
-    if (!existsSync(filePath)) throw new Error('File not found')
-    shell.openPath(filePath)
+    const target = assertUnderMusicDir(filePath)
+    if (!existsSync(target)) throw new Error('File not found')
+    shell.openPath(target)
   })
 
   ipcMain.handle(IpcChannels.LIBRARY_CREATE_DEVICE, async (_event, name: string) => {
@@ -493,7 +510,9 @@ export function registerLibraryIpc(): void {
         })
         imported++
       }
-      library.addTracks(playlist, tracks)
+      // Await the queued write so the imported playlist exists before we render
+      // its playlist-info.md (addTracks defers through the write queue).
+      await library.addTracks(playlist, tracks)
       // Write the human-readable playlist-info.md alongside the audio (downloads
       // already do this; imports used to skip it).
       try {
@@ -586,7 +605,7 @@ export function registerLibraryIpc(): void {
       }
     }
 
-    library.applyTrackPatches(patches)
+    await library.applyTrackPatches(patches)
     return { updated: patches.length, genres, artwork, tracks: total }
   })
 
@@ -635,16 +654,17 @@ export function registerLibraryIpc(): void {
   })
 
   ipcMain.handle(IpcChannels.LIBRARY_OPEN_FOLDER, async (_event, filePath: string) => {
+    const target = assertUnderMusicDir(filePath)
     try {
-      const stat = statSync(filePath)
+      const stat = statSync(target)
       if (stat.isDirectory()) {
-        shell.openPath(filePath)
+        shell.openPath(target)
       } else {
-        shell.showItemInFolder(filePath)
+        shell.showItemInFolder(target)
       }
     } catch {
-      // Path doesn't exist, try opening parent directory
-      shell.openPath(dirname(filePath))
+      // Path doesn't exist, try opening parent directory (still under musicDir).
+      shell.openPath(dirname(target))
     }
   })
 }

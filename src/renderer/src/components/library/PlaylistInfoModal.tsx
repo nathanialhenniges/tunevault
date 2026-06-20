@@ -25,6 +25,7 @@ export function PlaylistInfoModal({ playlistId, onClose }: PlaylistInfoModalProp
   const [viewMode, setViewMode] = useState<ViewMode>('pretty')
   const [markdownContent, setMarkdownContent] = useState<string | null>(null)
   const [infoFilePath, setInfoFilePath] = useState<string | null>(null)
+  const [loadingInfo, setLoadingInfo] = useState(true)
 
   const playlist = useMemo(
     () => library.playlists.find((p) => p.id === playlistId),
@@ -45,13 +46,26 @@ export function PlaylistInfoModal({ playlistId, onClose }: PlaylistInfoModalProp
 
   // Load markdown content and file path on mount
   useEffect(() => {
+    let cancelled = false
+    setLoadingInfo(true)
     Promise.all([
       window.api.readPlaylistInfo(playlistId),
       window.api.getPlaylistInfoPath(playlistId)
-    ]).then(([content, path]) => {
-      setMarkdownContent(content)
-      setInfoFilePath(path)
-    })
+    ])
+      .then(([content, path]) => {
+        if (cancelled) return
+        setMarkdownContent(content)
+        setInfoFilePath(path)
+      })
+      .catch(() => {
+        // Leave content/path null — the markdown view shows its fallback text.
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInfo(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [playlistId])
 
   const handleOpenFolder = async (): Promise<void> => {
@@ -158,7 +172,7 @@ export function PlaylistInfoModal({ playlistId, onClose }: PlaylistInfoModalProp
         ) : (
           <div className="bg-glass-hover border border-[var(--glass-border-edge)] rounded-lg p-4">
             <pre className="text-xs text-text-secondary whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
-              {markdownContent ?? 'No playlist-info.md file found.'}
+              {loadingInfo ? 'Loading…' : markdownContent ?? 'No playlist-info.md file found.'}
             </pre>
           </div>
         )}

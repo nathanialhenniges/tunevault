@@ -25,8 +25,28 @@ export function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+/**
+ * True if a yt-dlp stderr line or a download error message indicates HTTP 429
+ * rate limiting. Used both where the signal is first seen (stderr) and where the
+ * queue decides whether to retry, so the two layers can't drift apart.
+ */
+export function isRateLimitMessage(s: string): boolean {
+  const l = s.toLowerCase()
+  return (
+    l.includes('rate_limited') ||
+    s.includes('429') ||
+    l.includes('too many requests') ||
+    l.includes('rate limit')
+  )
+}
+
 export function sanitizeFilename(name: string): string {
-  return name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim()
+  // Strip path separators and FS-reserved chars (unchanged from prior behavior).
+  const cleaned = name.replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim()
+  // Then strip leading dots so a sanitized name can never become '.', '..', or a
+  // hidden/traversal entry (a playlist titled ".." must not escape its folder).
+  const safe = cleaned.replace(/^\.+/, '').trim()
+  return safe.length ? safe : 'untitled'
 }
 
 /** Canonical on-disk base name (no extension) for a track: "NN - Artist - Title". */

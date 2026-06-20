@@ -17,6 +17,14 @@ export class AudioEngine {
   // For crossfade
   private nextHowl: Howl | null = null
   private nextSoundId: number | null = null
+  private fadeTimer: ReturnType<typeof setInterval> | null = null
+
+  private clearFade(): void {
+    if (this.fadeTimer) {
+      clearInterval(this.fadeTimer)
+      this.fadeTimer = null
+    }
+  }
 
   load(
     src: string,
@@ -129,6 +137,8 @@ export class AudioEngine {
 
   crossfadeTo(duration: number): void {
     if (!this.nextHowl) return
+    // Cancel any crossfade already in flight before starting a new one.
+    this.clearFade()
 
     const currentHowl = this.howl
     const nextHowl = this.nextHowl
@@ -140,7 +150,7 @@ export class AudioEngine {
     // Start playing the next track
     nextHowl.play()
 
-    const fadeTimer = setInterval(() => {
+    this.fadeTimer = setInterval(() => {
       step++
       const progress = step / steps
 
@@ -152,7 +162,7 @@ export class AudioEngine {
       nextHowl.volume(progress)
 
       if (step >= steps) {
-        clearInterval(fadeTimer)
+        this.clearFade()
         // Unload old howl
         if (currentHowl) {
           currentHowl.unload()
@@ -247,6 +257,9 @@ export class AudioEngine {
 
   unload(): void {
     this.stopSeekUpdates()
+    // Kill any in-flight crossfade so its timer can't mutate/promote a howl we're
+    // about to unload (which would corrupt playback when the track changes mid-fade).
+    this.clearFade()
     if (this.howl) {
       this.howl.unload()
       this.howl = null

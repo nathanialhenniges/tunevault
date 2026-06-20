@@ -2,6 +2,51 @@
 
 All notable changes to TuneVault will be documented in this file.
 
+## [2.6.1] - 2026-06-19
+
+### Added
+- Inline metadata editor — select one or more library tracks and edit title, artist, and genre; changes are written back into the audio file tags (stream-copied, no re-encode)
+- Track inspector drawer with full per-track details and album art
+- Per-track album art: refresh from source or replace, re-embedded into the file
+- Genre field with a suggestion list, surfaced in the editor and written to tags
+- Drag-and-drop import — drop audio files/folders onto the window to add them to the library, or drop a YouTube playlist URL to fetch it; duplicate files prompt a keep/skip conflict dialog
+
+### Changed
+- Device sync reworked — each device now syncs independently (no global lock), with live per-device copy progress, a staged-vs-transferred file count, a "Mark transferred" action, and a manage panel for clearing staged/transferred copies
+- Apple Music import now resolves tracks concurrently and no longer aborts the whole import when a single lookup fails
+
+### Fixed
+- macOS "Support Ending for Intel-based Apps" warning — bundled ffmpeg/ffprobe were x86_64-only (from evermeet.cx) and ran under Rosetta. Now ship arm64-native builds; mac dmg/zip pinned to `arch: arm64` (Apple Silicon only)
+- Crossfade timer was not cancelled when a track changed mid-fade, which could corrupt playback and promote an unloaded track — the fade is now torn down on load/unload
+- Apple Music playlists re-scraped on every open because the fetch cache was written under a different key than it was read with; the 30-minute cache now hits
+- Rate-limit (HTTP 429) retries never fired because the signal was only on stderr — yt-dlp now surfaces it in the failure so the queue retries
+- Two concurrent downloads of the same playlist could clobber each other's batch bookkeeping (a unique batch id is now used per run)
+- Album-art downloads now cap redirects, time out, reject error responses, and handle 307/308 instead of writing an error body to disk
+- Now Playing / visualizer popovers (crossfade, style) now close on outside-click and Escape
+- Device folder status no longer goes stale when a device is replaced or its folder changes without the device count changing
+- Visualizer no longer allocates a buffer every animation frame (steady GC churn while open)
+
+### Accessibility
+- Right-click track menu is now fully keyboard-operable (menu/menuitem roles, focus management, arrow/Home/End/Escape)
+- Toasts announce via an `aria-live` region and long error messages wrap instead of truncating
+- Error boundary offers a "Try Again" that resets without a full reload
+- Icon-only device controls and the device playlist picker now have accessible labels
+- Decorative animation and transitions respect the OS "Reduce Motion" setting
+
+### Security
+- Hardened the `tunevault://` audio protocol — only the `Range` header is forwarded and an empty music directory is rejected (it previously resolved to the working directory)
+- Restricted the `tvcache://` art proxy to known image CDNs with a content-type and size cap (prevents the renderer from making the main process fetch arbitrary URLs)
+- All yt-dlp invocations pass URLs/search terms after a `--` separator and reject non-http(s) sources, closing an argument-injection vector
+- Sanitized filenames can no longer resolve to `.`, `..`, or hidden/traversal entries
+
+### Removed
+- Unused `@fontsource-variable/dm-sans` and `@fontsource-variable/fraunces` font packages (the UI ships Bricolage Grotesque + Hanken Grotesk)
+
+### Internal
+- Library batch writes (genre/art patches, imports) now serialize through the write queue alongside download upserts to prevent lost updates
+- Added tests for filename path-traversal protection and malformed date handling
+- CI now runs a renderer/main build-smoke on PRs and cancels superseded runs
+
 ## [2.6.0] - 2026-06-17
 
 ### Added

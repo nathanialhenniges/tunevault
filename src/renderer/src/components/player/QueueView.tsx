@@ -100,7 +100,7 @@ export function QueueView({ open, onClose }: QueueViewProps): JSX.Element | null
             const isDragOver = dragOverIndex === absoluteIndex
             return (
               <div
-                key={`${track.id}-${i}`}
+                key={track.id}
                 draggable
                 onDragStart={() => handleDragStart(absoluteIndex)}
                 onDragOver={(e) => handleDragOver(e, absoluteIndex)}

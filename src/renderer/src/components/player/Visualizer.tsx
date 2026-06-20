@@ -105,6 +105,8 @@ export function Visualizer({ enabled, style }: VisualizerProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const gradientCacheRef = useRef<{ gradient: CanvasGradient; w: number; h: number } | null>(null)
   const accentRef = useRef('')
+  // Reused across frames so we don't allocate a Uint8Array ~60×/sec.
+  const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current
@@ -131,12 +133,13 @@ export function Visualizer({ enabled, style }: VisualizerProps): JSX.Element {
       gradientCacheRef.current = null
     }
 
+    const size = style === 'waveform' ? analyser.fftSize : analyser.frequencyBinCount
+    if (!dataRef.current || dataRef.current.length !== size) dataRef.current = new Uint8Array(size)
+    const data = dataRef.current
     if (style === 'waveform') {
-      const data = new Uint8Array(analyser.fftSize)
       analyser.getByteTimeDomainData(data)
       drawWaveform(ctx, data, w, h, accentRgb)
     } else {
-      const data = new Uint8Array(analyser.frequencyBinCount)
       analyser.getByteFrequencyData(data)
       if (style === 'circular') drawCircular(ctx, data, w, h, accentRgb)
       else drawBars(ctx, data, w, h, accentRgb, gradientCacheRef.current, (c) => { gradientCacheRef.current = c })

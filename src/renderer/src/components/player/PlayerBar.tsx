@@ -1,4 +1,4 @@
-import { useState, useRef, memo } from 'react'
+import { useState, useRef, useEffect, memo } from 'react'
 import { usePlayerStore } from '../../store/playerStore'
 import { useShallow } from 'zustand/react/shallow'
 import { audioEngine } from '../../lib/audioEngine'
@@ -14,7 +14,8 @@ import {
   ArrowPathIcon,
   ArrowsRightLeftIcon,
   QueueListIcon,
-  SignalIcon
+  SignalIcon,
+  ChevronUpIcon
 } from '@heroicons/react/24/solid'
 import { useVisualizerStore } from '../../store/visualizerStore'
 import type { VisualizerStyle } from '../../store/visualizerStore'
@@ -89,6 +90,32 @@ export function PlayerBar(): JSX.Element {
   const [showQueue, setShowQueue] = useState(false)
   const [showCrossfadeMenu, setShowCrossfadeMenu] = useState(false)
   const [showVisualizerMenu, setShowVisualizerMenu] = useState(false)
+  const crossfadeRef = useRef<HTMLDivElement>(null)
+  const visualizerRef = useRef<HTMLDivElement>(null)
+
+  // Dismiss the crossfade/visualizer popovers on outside-click or Escape so they
+  // can't linger or stack open. (Clicks inside a popover toggle via their button.)
+  useEffect(() => {
+    if (!showCrossfadeMenu && !showVisualizerMenu) return
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as Node
+      if (crossfadeRef.current?.contains(t) || visualizerRef.current?.contains(t)) return
+      setShowCrossfadeMenu(false)
+      setShowVisualizerMenu(false)
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setShowCrossfadeMenu(false)
+        setShowVisualizerMenu(false)
+      }
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [showCrossfadeMenu, showVisualizerMenu])
 
   const {
     isPlaying, togglePlay, next, prev, shuffle, repeat,
@@ -206,7 +233,7 @@ export function PlayerBar(): JSX.Element {
         >
           {playbackRate}x
         </button>
-        <div className="relative">
+        <div className="relative" ref={crossfadeRef}>
           <button
             onClick={() => setShowCrossfadeMenu(!showCrossfadeMenu)}
             className={`text-[11px] font-medium px-1.5 py-0.5 rounded transition ${
@@ -236,17 +263,30 @@ export function PlayerBar(): JSX.Element {
           )}
         </div>
         <VolumeControl />
-        <div className="relative">
+        <div className="relative flex items-center" ref={visualizerRef}>
           <button
             onClick={toggleVisualizer}
             onContextMenu={(e) => { e.preventDefault(); setShowVisualizerMenu(!showVisualizerMenu) }}
             className={`transition ${visualizerEnabled ? 'text-accent' : 'text-text-muted hover:text-text-secondary'}`}
-            title="Visualizer (right-click for style)"
-            aria-label="Visualizer"
+            title="Visualizer"
+            aria-label={visualizerEnabled ? 'Hide visualizer' : 'Show visualizer'}
             aria-pressed={visualizerEnabled}
           >
             <SignalIcon className="w-4 h-4" />
           </button>
+          {/* Visible, keyboard-reachable style picker (right-click on the icon also opens it). */}
+          {visualizerEnabled && (
+            <button
+              onClick={() => setShowVisualizerMenu(!showVisualizerMenu)}
+              className="text-text-muted hover:text-text-secondary transition -ml-0.5"
+              title="Visualizer style"
+              aria-label="Choose visualizer style"
+              aria-haspopup="menu"
+              aria-expanded={showVisualizerMenu}
+            >
+              <ChevronUpIcon className="w-3 h-3" />
+            </button>
+          )}
           {showVisualizerMenu && (
             <div className="absolute bottom-full right-0 mb-1 glass-float glass-border-float py-1 min-w-[6rem]" style={{ borderRadius: 'var(--radius-card)' }}>
               {VISUALIZER_STYLES.map(({ value, label }) => (

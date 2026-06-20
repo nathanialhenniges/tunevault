@@ -155,8 +155,11 @@ app.whenReady().then(() => {
     // On Windows paths don't start with /, on macOS/Linux they do
     const resolvedPath = resolve(process.platform === 'win32' ? filePath : '/' + filePath)
 
-    // Validate the resolved path is under the configured music directory
+    // Validate the resolved path is under the configured music directory.
+    // Bail on an empty musicDir — resolve('') is the cwd, which would otherwise
+    // expose the whole working directory through the protocol.
     const settings = SettingsService.load()
+    if (!settings.musicDir) return new Response('Forbidden', { status: 403 })
     const musicDir = resolve(settings.musicDir)
     if (!resolvedPath.startsWith(musicDir + '/') && !resolvedPath.startsWith(musicDir + '\\') && resolvedPath !== musicDir) {
       return new Response('Forbidden', { status: 403 })
@@ -164,10 +167,10 @@ app.whenReady().then(() => {
 
     const fileUrl = pathToFileURL(resolvedPath).href
 
-    // Forward Range headers so HTML5 <audio> seeking works
-    return net.fetch(fileUrl, {
-      headers: request.headers
-    })
+    // Forward only the Range header (for HTML5 <audio> seeking) rather than the
+    // renderer's full header set.
+    const range = request.headers.get('range')
+    return net.fetch(fileUrl, range ? { headers: { Range: range } } : {})
   })
 
   // tvcache://img/<encodeURIComponent(remoteUrl)> — serve a remote thumbnail from
