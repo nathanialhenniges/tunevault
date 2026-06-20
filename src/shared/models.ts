@@ -20,6 +20,20 @@ export interface Track {
   source?: 'youtube' | 'soundcloud'
   /** Looked-up music genre (e.g. from MusicBrainz). Shown in the library + tagged on export. */
   genre?: string
+  /** sha1 of the source file's bytes — used to detect re-imports of the same audio. */
+  fileHash?: string
+}
+
+/** What to do with imported files whose content already exists in the library. */
+export type ImportConflictDecision = 'keep' | 'overwrite' | 'skip'
+
+export interface ImportResult {
+  imported: number
+  playlists: number
+  /** Set when dupes were found and no decision was given yet — renderer must prompt. */
+  needsDecision?: boolean
+  /** Names of dropped files that already exist (by content hash). */
+  conflicts?: string[]
 }
 
 export interface Playlist {

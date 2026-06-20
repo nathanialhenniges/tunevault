@@ -63,17 +63,22 @@ function createWindow(): BrowserWindow {
   const isWin = process.platform === 'win32'
 
   const opts: Electron.BrowserWindowConstructorOptions = {
-    width: 1200,
-    height: 800,
-    minWidth: 900,
+    // Default + min sizes chosen to open comfortably on a 1280x720 display
+    // (height stays under ~680 usable after the menu bar).
+    width: 1160,
+    height: 680,
+    minWidth: 880,
     minHeight: 600,
     show: false,
     title: 'TuneVault',
     icon: getIconPath(),
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
-    // macOS vibrancy + Windows 11 Mica both need a transparent backing so the
-    // native material shows through; Linux keeps a solid background.
-    backgroundColor: isMac || isWin ? '#00000000' : '#09090b',
+    // Windows 11 Mica needs a transparent backing so the material shows through.
+    // macOS + Linux keep a solid opaque backing: window-level vibrancy only ever
+    // surfaced as a bright hairline of desktop bleed at the frame edge (the 90%
+    // opaque content layer hid the rest), so it's not worth that artifact. The
+    // in-app glass (backdrop-filter on .glass-*) gives the depth instead.
+    backgroundColor: isWin ? '#00000000' : '#09090b',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -81,8 +86,6 @@ function createWindow(): BrowserWindow {
   }
   if (isMac) {
     opts.trafficLightPosition = { x: 16, y: 16 }
-    opts.vibrancy = 'under-window'
-    opts.visualEffectState = 'active'
   }
   if (isWin) {
     // Native window controls (min/max/close) drawn by the OS into our chrome.

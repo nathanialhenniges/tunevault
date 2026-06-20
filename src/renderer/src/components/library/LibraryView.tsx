@@ -14,12 +14,16 @@ import {
   XMarkIcon,
   MusicalNoteIcon,
   ArrowDownTrayIcon,
-  DevicePhoneMobileIcon
+  DevicePhoneMobileIcon,
+  PencilSquareIcon,
+  ArrowPathRoundedSquareIcon
 } from '@heroicons/react/24/outline'
 import { useSettingsStore } from '../../store/settingsStore'
 import { useSyncStore } from '../../store/syncStore'
 import { useLocation } from 'react-router-dom'
 import { Modal } from '../ui/Modal'
+import { Button } from '../ui/Button'
+import { EditMetadataModal } from './EditMetadataModal'
 import { PlaylistInfoModal } from './PlaylistInfoModal'
 import { toast } from '../../store/toastStore'
 
@@ -39,6 +43,9 @@ export function LibraryView(): JSX.Element {
   const sortBy = useLibraryStore((s) => s.sortBy)
   const sortDirection = useLibraryStore((s) => s.sortDirection)
   const getFilteredTracks = useLibraryStore((s) => s.getFilteredTracks)
+  const renamePlaylist = useLibraryStore((s) => s.renamePlaylist)
+  const setMetadata = useLibraryStore((s) => s.setMetadata)
+  const applyTrackPatch = useLibraryStore((s) => s.applyTrackPatch)
   const settings = useSettingsStore((s) => s.settings)
   const syncing = useSyncStore((s) => s.syncing)
   const pendingResults = useSyncStore((s) => s.pendingResults)
@@ -46,8 +53,14 @@ export function LibraryView(): JSX.Element {
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
   const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false)
   const [showPlaylistInfo, setShowPlaylistInfo] = useState(false)
+  const [renameValue, setRenameValue] = useState<string | null>(null)
   const [playlistFilter, setPlaylistFilter] = useState<string>('all')
   const [fetchingGenres, setFetchingGenres] = useState(false)
+  const [genreProgress, setGenreProgress] = useState<{ current: number; total: number } | null>(null)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [rebuildProgress, setRebuildProgress] = useState<{ current: number; total: number } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [showEditTags, setShowEditTags] = useState(false)
   const devices = useSettingsStore((s) => s.settings.devices)
   const toggleDevicePlaylist = useSettingsStore((s) => s.toggleDevicePlaylist)
   const location = useLocation()
@@ -55,6 +68,25 @@ export function LibraryView(): JSX.Element {
   useEffect(() => {
     if (!loaded) load()
   }, [loaded])
+
+  // Live progress for the (slow, rate-limited) genre lookup so the button shows
+  // real "X of N" instead of looking dead.
+  useEffect(
+    () =>
+      window.api.onFetchGenresProgress((p) => {
+        setGenreProgress({ current: p.current, total: p.total })
+        // Live-update the row as each track's genre/art/artist comes back.
+        if (p.patch) {
+          applyTrackPatch(p.patch.trackId, {
+            genre: p.patch.genre,
+            artist: p.patch.artist,
+            thumbnailUrl: p.patch.thumbnailUrl
+          })
+        }
+      }),
+    [applyTrackPatch]
+  )
+  useEffect(() => window.api.onRebuildProgress((p) => setRebuildProgress(p)), [])
 
   // Auto-apply playlist filter from navigation state
   useEffect(() => {
@@ -76,18 +108,32 @@ export function LibraryView(): JSX.Element {
   const allSelected = tracks.length > 0 && selectedTrackIds.size === tracks.length
 
   const handleDeleteSelected = async (): Promise<void> => {
-    await deleteTracks(Array.from(selectedTrackIds))
-    setShowDeleteSelectedConfirm(false)
+    setDeleting(true)
+    try {
+      await deleteTracks(Array.from(selectedTrackIds))
+      setShowDeleteSelectedConfirm(false)
+    } catch (e) {
+      toast.error((e as Error).message) // keep the modal open so the user can retry
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleDeleteAll = async (): Promise<void> => {
-    if (playlistFilter !== 'all') {
-      // Only delete tracks visible under the current playlist filter
-      await deleteTracks(tracks.map((t) => t.id))
-    } else {
-      await deleteAll()
+    setDeleting(true)
+    try {
+      if (playlistFilter !== 'all') {
+        // Only delete tracks visible under the current playlist filter
+        await deleteTracks(tracks.map((t) => t.id))
+      } else {
+        await deleteAll()
+      }
+      setShowDeleteAllConfirm(false)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setDeleting(false)
     }
-    setShowDeleteAllConfirm(false)
   }
 
   return (
@@ -135,28 +181,75 @@ export function LibraryView(): JSX.Element {
             </button>
           )}
           {library.playlists.length > 0 && (
-            <button
+            <Button
+              size="sm"
+              icon={MusicalNoteIcon}
+              loading={fetchingGenres}
+              loadingLabel={
+                genreProgress && genreProgress.total > 0
+                  ? `Metadata ${genreProgress.current}/${genreProgress.total}`
+                  : 'Fetching…'
+              }
               onClick={async () => {
                 const ids =
                   playlistFilter !== 'all' ? [playlistFilter] : library.playlists.map((p) => p.id)
                 setFetchingGenres(true)
+                setGenreProgress(null)
                 try {
                   const r = await window.api.fetchGenres(ids)
                   await load()
-                  toast.success(`Genre found for ${r.updated} tracks (${r.tagged} files tagged)`)
+                  toast.success(`Found ${r.genres} genre${r.genres === 1 ? '' : 's'} and ${r.artwork} cover${r.artwork === 1 ? '' : 's'} across ${r.tracks} track${r.tracks === 1 ? '' : 's'}`)
                 } catch (e) {
                   toast.error((e as Error).message)
                 } finally {
                   setFetchingGenres(false)
+                  setGenreProgress(null)
                 }
               }}
-              disabled={fetchingGenres}
-              className="px-3 py-1.5 text-xs text-text-secondary hover:text-accent border border-border-default rounded-lg hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5 disabled:opacity-50"
-              title="Look up genre for tracks (MusicBrainz) and tag the files"
+              title="Look up genre + album art (MusicBrainz / Cover Art Archive) and tag the files"
             >
-              <MusicalNoteIcon className={`w-3.5 h-3.5 ${fetchingGenres ? 'animate-pulse' : ''}`} />
-              {fetchingGenres ? 'Fetching Genres…' : 'Fetch Genres'}
-            </button>
+              Fetch Metadata
+            </Button>
+          )}
+
+          {library.playlists.length > 0 && (
+            <Button
+              size="sm"
+              icon={ArrowPathRoundedSquareIcon}
+              loading={rebuilding}
+              loadingLabel={
+                rebuildProgress && rebuildProgress.total > 0
+                  ? `Rebuilding ${rebuildProgress.current}/${rebuildProgress.total}`
+                  : 'Rebuilding…'
+              }
+              onClick={async () => {
+                const ids =
+                  playlistFilter !== 'all' ? [playlistFilter] : library.playlists.map((p) => p.id)
+                setRebuilding(true)
+                setRebuildProgress(null)
+                try {
+                  const r = await window.api.rebuildMetadata(ids)
+                  await load()
+                  const infoMsg = `${r.playlists} info file${r.playlists === 1 ? '' : 's'}`
+                  if (r.tracks > 0 && r.tagged === 0) {
+                    // Tagging failed for everything — say why instead of "0/N".
+                    toast.error(r.error ? `Couldn't tag files: ${r.error}` : "Couldn't tag any files")
+                  } else if (r.tagged < r.tracks) {
+                    toast.info(`Tagged ${r.tagged}/${r.tracks} files · ${infoMsg}${r.error ? ` · ${r.error}` : ''}`)
+                  } else {
+                    toast.success(`Rebuilt ${r.tagged} file${r.tagged === 1 ? '' : 's'} · ${infoMsg}`)
+                  }
+                } catch (e) {
+                  toast.error((e as Error).message)
+                } finally {
+                  setRebuilding(false)
+                  setRebuildProgress(null)
+                }
+              }}
+              title="Re-tag every file from the library and regenerate playlist-info.md"
+            >
+              Rebuild Metadata
+            </Button>
           )}
 
           {/* Playlist filter */}
@@ -189,6 +282,16 @@ export function LibraryView(): JSX.Element {
               >
                 <DocumentTextIcon className="w-3.5 h-3.5" />
                 Playlist Info
+              </button>
+              <button
+                onClick={() =>
+                  setRenameValue(library.playlists.find((p) => p.id === playlistFilter)?.title ?? '')
+                }
+                className="px-3 py-1.5 text-xs text-text-secondary hover:text-accent border border-border-default rounded-lg hover:border-accent/40 hover:bg-accent/5 transition-all flex items-center gap-1.5"
+                title="Rename this playlist"
+              >
+                <PencilSquareIcon className="w-3.5 h-3.5" />
+                Rename
               </button>
               <button
                 onClick={async () => {
@@ -249,6 +352,12 @@ export function LibraryView(): JSX.Element {
                   <><CheckIcon className="w-3.5 h-3.5" /> Select All</>
                 )}
               </button>
+
+              {hasSelection && (
+                <Button size="sm" icon={PencilSquareIcon} onClick={() => setShowEditTags(true)}>
+                  Edit Tags ({selectedTrackIds.size})
+                </Button>
+              )}
 
               {hasSelection && (
                 <button
@@ -325,7 +434,7 @@ export function LibraryView(): JSX.Element {
       )}
 
       {/* Delete All Confirmation Modal */}
-      <Modal open={showDeleteAllConfirm} onClose={() => setShowDeleteAllConfirm(false)} className="p-6 max-w-md mx-4">
+      <Modal open={showDeleteAllConfirm} onClose={() => !deleting && setShowDeleteAllConfirm(false)} className="p-6 max-w-md mx-4">
         <h3 className="text-lg font-semibold mb-2">
           {playlistFilter !== 'all' ? `Delete ${tracks.length} Playlist Tracks?` : 'Delete Entire Library?'}
         </h3>
@@ -337,17 +446,77 @@ export function LibraryView(): JSX.Element {
         <div className="flex justify-end gap-3">
           <button
             onClick={() => setShowDeleteAllConfirm(false)}
-            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
+            disabled={deleting}
+            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleDeleteAll}
-            className="px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+            disabled={deleting}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition disabled:opacity-70"
           >
-            {playlistFilter !== 'all' ? 'Delete Playlist Tracks' : 'Delete Everything'}
+            {deleting && (
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-90" />
+              </svg>
+            )}
+            {deleting ? 'Deleting…' : playlistFilter !== 'all' ? 'Delete Playlist Tracks' : 'Delete Everything'}
           </button>
         </div>
+      </Modal>
+
+      {/* Edit Metadata (multi-select) */}
+      {showEditTags && hasSelection && (
+        <EditMetadataModal
+          tracks={tracks.filter((t) => selectedTrackIds.has(t.id))}
+          onClose={() => setShowEditTags(false)}
+          onSave={(patch) => setMetadata(Array.from(selectedTrackIds), patch)}
+        />
+      )}
+
+      {/* Rename Playlist Modal */}
+      <Modal open={renameValue !== null} onClose={() => setRenameValue(null)} className="p-6 max-w-md mx-4">
+        <h3 className="text-lg font-semibold mb-2">Rename Playlist</h3>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault()
+            const name = (renameValue ?? '').trim()
+            if (!name) return
+            try {
+              await renamePlaylist(playlistFilter, name)
+            } catch (err) {
+              toast.error((err as Error).message)
+            }
+            setRenameValue(null)
+          }}
+        >
+          <input
+            autoFocus
+            value={renameValue ?? ''}
+            onChange={(e) => setRenameValue(e.target.value)}
+            className="w-full border border-border-default rounded-lg px-3 py-2 text-sm bg-transparent focus:outline-none focus:border-accent transition mb-1"
+            placeholder="Playlist name"
+          />
+          <p className="text-xs text-text-muted mb-5">Renames the playlist in your library. Audio files stay where they are.</p>
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setRenameValue(null)}
+              className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!(renameValue ?? '').trim()}
+              className="px-4 py-2 text-sm text-text-inverted bg-accent hover:opacity-90 rounded-lg transition disabled:opacity-40"
+            >
+              Rename
+            </button>
+          </div>
+        </form>
       </Modal>
 
       {/* Playlist Info Modal */}
@@ -359,7 +528,7 @@ export function LibraryView(): JSX.Element {
       )}
 
       {/* Delete Selected Confirmation Modal */}
-      <Modal open={showDeleteSelectedConfirm} onClose={() => setShowDeleteSelectedConfirm(false)} className="p-6 max-w-md mx-4">
+      <Modal open={showDeleteSelectedConfirm} onClose={() => !deleting && setShowDeleteSelectedConfirm(false)} className="p-6 max-w-md mx-4">
         <h3 className="text-lg font-semibold mb-2">Delete {selectedTrackIds.size} tracks?</h3>
         <p className="text-sm text-text-secondary mb-6">
           This will permanently delete the selected tracks and their audio files from disk. This action cannot be undone.
@@ -367,15 +536,23 @@ export function LibraryView(): JSX.Element {
         <div className="flex justify-end gap-3">
           <button
             onClick={() => setShowDeleteSelectedConfirm(false)}
-            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
+            disabled={deleting}
+            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleDeleteSelected}
-            className="px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
+            disabled={deleting}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition disabled:opacity-70"
           >
-            Delete Selected
+            {deleting && (
+              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-90" />
+              </svg>
+            )}
+            {deleting ? 'Deleting…' : 'Delete Selected'}
           </button>
         </div>
       </Modal>

@@ -147,10 +147,25 @@ export class FfmpegService {
    * and other metadata. Fast: stream copy, no re-encode.
    */
   async setGenre(filePath: string, genre: string): Promise<void> {
+    await this.setTags(filePath, { genre })
+  }
+
+  /**
+   * Write one or more text tags (title/artist/genre) in place, preserving all
+   * existing streams (audio + cover art) and other metadata. Stream copy, no
+   * re-encode. Only the provided keys are written.
+   */
+  async setTags(
+    filePath: string,
+    tags: { title?: string; artist?: string; genre?: string }
+  ): Promise<void> {
+    const entries = Object.entries(tags).filter(([, v]) => v !== undefined) as [string, string][]
+    if (!entries.length) return
     const ffmpegPath = this.binary.getFfmpegPath()
     const ext = filePath.substring(filePath.lastIndexOf('.'))
-    const tmpOutput = filePath + '.genre' + ext
-    const args = ['-i', filePath, '-map', '0', '-c', 'copy', '-metadata', `genre=${genre}`]
+    const tmpOutput = filePath + '.tags' + ext
+    const args = ['-i', filePath, '-map', '0', '-c', 'copy']
+    for (const [k, v] of entries) args.push('-metadata', `${k}=${v}`)
     if (ext === '.mp3') args.push('-id3v2_version', '4')
     args.push('-y', tmpOutput)
 
@@ -215,6 +230,41 @@ export class FfmpegService {
       return existsSync(destPath)
     } catch {
       return false
+    }
+  }
+
+  /** Download an image (cover art) to destPath. Returns false on any failure (e.g. 404). */
+  async fetchArtwork(imageUrl: string, destPath: string): Promise<boolean> {
+    try {
+      await this.downloadFile(imageUrl, destPath)
+      return existsSync(destPath)
+    } catch {
+      return false
+    }
+  }
+
+  /** Embed a local cover image into an existing audio file (mp3/flac), stream-copy
+   *  audio. Other formats are skipped silently. */
+  async embedArtwork(filePath: string, imagePath: string): Promise<void> {
+    const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase()
+    if ((ext !== '.mp3' && ext !== '.flac') || !existsSync(imagePath)) return
+    const ffmpegPath = this.binary.getFfmpegPath()
+    const tmpOutput = filePath + '.art' + ext
+    const args = [
+      '-i', filePath, '-i', imagePath,
+      '-map', '0:a', '-map', '1:v', '-c', 'copy',
+      '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)'
+    ]
+    if (ext === '.flac') args.push('-disposition:v', 'attached_pic')
+    if (ext === '.mp3') args.push('-id3v2_version', '4')
+    args.push('-y', tmpOutput)
+    try {
+      await this.runFfmpeg(ffmpegPath, args)
+      const fs = await import('fs/promises')
+      await fs.rename(tmpOutput, filePath)
+    } catch (err) {
+      if (existsSync(tmpOutput)) unlinkSync(tmpOutput)
+      throw err
     }
   }
 

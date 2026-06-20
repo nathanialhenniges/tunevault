@@ -44,6 +44,10 @@ interface LibraryState {
   selectAllTracks: () => void
   clearSelection: () => void
   deleteTracks: (trackIds: string[]) => Promise<void>
+  moveTracks: (trackIds: string[], targetPlaylistId: string) => Promise<void>
+  renamePlaylist: (playlistId: string, newTitle: string) => Promise<void>
+  setMetadata: (trackIds: string[], patch: { title?: string; artist?: string; genre?: string }) => Promise<void>
+  applyTrackPatch: (trackId: string, patch: { genre?: string; artist?: string; thumbnailUrl?: string }) => void
   deleteAll: () => Promise<void>
   openFolder: (filePath: string) => Promise<void>
 }
@@ -178,6 +182,36 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     await window.api.deleteTracks(trackIds)
     toast.success(`Deleted ${trackIds.length} track${trackIds.length === 1 ? '' : 's'}`)
     await get().load()
+  },
+
+  moveTracks: async (trackIds: string[], targetPlaylistId: string) => {
+    await window.api.moveTracks(trackIds, targetPlaylistId)
+    toast.success(`Moved ${trackIds.length} track${trackIds.length === 1 ? '' : 's'}`)
+    await get().load()
+  },
+
+  renamePlaylist: async (playlistId: string, newTitle: string) => {
+    await window.api.renamePlaylist(playlistId, newTitle)
+    toast.success('Playlist renamed')
+    await get().load()
+  },
+
+  setMetadata: async (trackIds, patch) => {
+    const r = await window.api.setMetadata(trackIds, patch)
+    toast.success(`Updated ${r.updated} track${r.updated === 1 ? '' : 's'} (${r.tagged} file${r.tagged === 1 ? '' : 's'} tagged)`)
+    await get().load()
+  },
+
+  applyTrackPatch: (trackId, patch) => {
+    set((s) => ({
+      library: {
+        ...s.library,
+        playlists: s.library.playlists.map((p) => ({
+          ...p,
+          tracks: p.tracks.map((t) => (t.id === trackId ? { ...t, ...patch } : t))
+        }))
+      }
+    }))
   },
 
   deleteAll: async () => {

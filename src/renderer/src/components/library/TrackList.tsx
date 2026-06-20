@@ -10,6 +10,8 @@ import { Checkbox } from '../ui/Checkbox'
 import { ContextMenu } from '../ui/ContextMenu'
 import { TrackDetailModal } from '../ui/TrackDetailModal'
 import { AlbumArt } from '../ui/AlbumArt'
+import { Modal } from '../ui/Modal'
+import { EditMetadataModal } from './EditMetadataModal'
 import {
   FolderOpenIcon,
   TrashIcon,
@@ -17,12 +19,17 @@ import {
   XMarkIcon,
   InformationCircleIcon,
   ChevronUpIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  QueueListIcon,
+  PencilSquareIcon
 } from '@heroicons/react/24/outline'
 
 interface TrackListProps {
   tracks: Track[]
 }
+
+/** Fixed row heights (px) per density. The row fills this exactly (h-full). */
+const ROW_HEIGHT: Record<TrackDensity, number> = { comfortable: 56, compact: 44 }
 
 interface LibraryTrackRowProps {
   track: Track
@@ -57,10 +64,10 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
   return (
     <div
       onContextMenu={(e) => onContextMenu(e, track)}
-      className={`flex items-center gap-4 px-4 ${dense ? 'py-1' : 'py-2.5'} rounded-[var(--radius-item)] transition group ${
+      className={`h-full flex items-center gap-4 px-4 transition group ${
         isCurrent
-          ? 'bg-accent/10 text-accent border-l-2 border-accent'
-          : 'hover:bg-glass-hover hover:translate-x-0.5'
+          ? 'bg-accent/10 text-accent'
+          : 'hover:bg-glass-hover'
       }`}
     >
       <Checkbox checked={isSelected} onChange={() => onToggleSelection(track.id, index)} onClick={handleCheckboxClick} />
@@ -96,7 +103,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
         {track.filePath && (
           <button
             onClick={() => onOpenFolder(track.filePath!)}
-            className="text-text-muted hover:text-accent transition p-1 rounded"
+            className="text-text-muted hover:text-accent transition p-1.5 rounded"
             title="Show in folder"
           >
             <FolderOpenIcon className="w-4 h-4" />
@@ -106,14 +113,14 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
           <div className="flex gap-0.5">
             <button
               onClick={() => onDeleteOne(track.id)}
-              className="text-red-500 hover:text-red-400 transition p-1"
+              className="text-red-500 hover:text-red-400 transition p-1.5"
               title="Confirm delete"
             >
               <CheckIcon className="w-4 h-4" />
             </button>
             <button
               onClick={() => onConfirmDelete(null)}
-              className="text-text-muted hover:text-text-primary transition p-1"
+              className="text-text-muted hover:text-text-primary transition p-1.5"
               title="Cancel"
             >
               <XMarkIcon className="w-4 h-4" />
@@ -122,7 +129,7 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
         ) : (
           <button
             onClick={() => onConfirmDelete(track.id)}
-            className="text-text-muted hover:text-red-500 transition p-1 rounded"
+            className="text-text-muted hover:text-red-500 transition p-1.5 rounded"
             title="Delete track"
           >
             <TrashIcon className="w-4 h-4" />
@@ -132,8 +139,19 @@ const LibraryTrackRow = memo(function LibraryTrackRow({
     </div>
   )
 }, (prev, next) => {
+  const a = prev.track
+  const b = next.track
   return (
-    prev.track.id === next.track.id &&
+    a.id === b.id &&
+    // Re-render when any rendered field changes (live metadata patches, reloads).
+    a.title === b.title &&
+    a.artist === b.artist &&
+    a.genre === b.genre &&
+    a.thumbnailUrl === b.thumbnailUrl &&
+    a.playlistTitle === b.playlistTitle &&
+    a.duration === b.duration &&
+    a.bitrate === b.bitrate &&
+    a.filePath === b.filePath &&
     prev.isCurrent === next.isCurrent &&
     prev.isSelected === next.isSelected &&
     prev.index === next.index &&
@@ -171,18 +189,28 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
   const toggleTrackSelection = useLibraryStore((s) => s.toggleTrackSelection)
   const shiftSelectTracks = useLibraryStore((s) => s.shiftSelectTracks)
   const deleteTracks = useLibraryStore((s) => s.deleteTracks)
+  const moveTracks = useLibraryStore((s) => s.moveTracks)
+  const setMetadata = useLibraryStore((s) => s.setMetadata)
+  const playlists = useLibraryStore((s) => s.library.playlists)
   const openFolder = useLibraryStore((s) => s.openFolder)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; track: Track } | null>(null)
   const [detailTrack, setDetailTrack] = useState<Track | null>(null)
+  // Tracks queued for a "move to playlist" action (the right-clicked track, plus
+  // the rest of the selection when it's part of a multi-select).
+  const [moveTargets, setMoveTargets] = useState<Track[] | null>(null)
+  const [editTargets, setEditTargets] = useState<Track[] | null>(null)
   const density = useSettingsStore((s) => s.settings.trackDensity)
   const parentRef = useRef<HTMLDivElement>(null)
 
   const rowVirtualizer = useVirtualizer({
     count: tracks.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => (density === 'compact' ? 38 : 50),
-    overscan: 5
+    // Rows are a fixed height per density (the inner row fills its slot via
+    // h-full), so the estimate IS the real height — no dynamic measurement,
+    // no drift between a row's draw position and its hover hit-area.
+    estimateSize: () => ROW_HEIGHT[density],
+    overscan: 6
   })
 
   // Re-measure when the density setting changes.
@@ -205,6 +233,30 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
     setContextMenu({ x: e.clientX, y: e.clientY, track })
   }, [])
 
+  const openMove = useCallback((track: Track) => {
+    // If the track is part of a multi-selection, move the whole selection.
+    if (selectedTrackIds.has(track.id) && selectedTrackIds.size > 1) {
+      setMoveTargets(tracks.filter((t) => selectedTrackIds.has(t.id)))
+    } else {
+      setMoveTargets([track])
+    }
+  }, [selectedTrackIds, tracks])
+
+  const handleMove = useCallback(async (targetPlaylistId: string) => {
+    if (!moveTargets) return
+    await moveTracks(moveTargets.map((t) => t.id), targetPlaylistId)
+    setMoveTargets(null)
+  }, [moveTargets, moveTracks])
+
+  const openEdit = useCallback((track: Track) => {
+    // Edit the whole selection when the track is part of a multi-select.
+    if (selectedTrackIds.has(track.id) && selectedTrackIds.size > 1) {
+      setEditTargets(tracks.filter((t) => selectedTrackIds.has(t.id)))
+    } else {
+      setEditTargets([track])
+    }
+  }, [selectedTrackIds, tracks])
+
   const handleToggleSelection = useCallback((id: string, index: number) => {
     toggleTrackSelection(id, index)
   }, [toggleTrackSelection])
@@ -219,8 +271,9 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Header */}
-      <div className="flex items-center gap-4 px-4 py-2 text-xs text-text-muted uppercase tracking-wider border-b border-border-default">
+      {/* Header — title-case to match the sortable <button> labels (which reset
+          text-transform), so columns read uniformly like a native list view. */}
+      <div className="flex items-center gap-4 px-4 pb-2.5 text-[11px] font-medium text-text-muted tracking-wide border-b border-border-default">
         <span className="w-6"></span>
         <span className="w-8 text-right">#</span>
         <SortHeader field="title" label="Title" className="flex-1" />
@@ -234,7 +287,7 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
       {/* Virtualized list */}
       <div
         ref={parentRef}
-        className="flex-1 min-h-0 overflow-y-auto"
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
       >
         <div
           style={{
@@ -289,6 +342,20 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
               icon: <InformationCircleIcon className="w-4 h-4" />,
               onClick: () => setDetailTrack(contextMenu.track)
             },
+            {
+              label: selectedTrackIds.has(contextMenu.track.id) && selectedTrackIds.size > 1
+                ? `Edit Metadata (${selectedTrackIds.size})`
+                : 'Edit Metadata',
+              icon: <PencilSquareIcon className="w-4 h-4" />,
+              onClick: () => openEdit(contextMenu.track)
+            },
+            ...(playlists.length > 1 ? [{
+              label: selectedTrackIds.has(contextMenu.track.id) && selectedTrackIds.size > 1
+                ? `Move ${selectedTrackIds.size} to Playlist…`
+                : 'Move to Playlist…',
+              icon: <QueueListIcon className="w-4 h-4" />,
+              onClick: () => openMove(contextMenu.track)
+            }] : []),
             ...(contextMenu.track.filePath ? [{
               label: 'Show in Folder',
               icon: <FolderOpenIcon className="w-4 h-4" />,
@@ -305,8 +372,55 @@ export function TrackList({ tracks }: TrackListProps): JSX.Element {
       )}
 
       {detailTrack && (
-        <TrackDetailModal track={detailTrack} onClose={() => setDetailTrack(null)} />
+        <TrackDetailModal
+          track={detailTrack}
+          onClose={() => setDetailTrack(null)}
+          onSave={(patch) => setMetadata([detailTrack.id], patch)}
+        />
       )}
+
+      {editTargets && (
+        <EditMetadataModal
+          tracks={editTargets}
+          onClose={() => setEditTargets(null)}
+          onSave={(patch) => setMetadata(editTargets.map((t) => t.id), patch)}
+        />
+      )}
+
+      {/* Move to Playlist picker */}
+      <Modal open={!!moveTargets} onClose={() => setMoveTargets(null)} className="p-6 max-w-sm mx-4">
+        <h3 className="text-lg font-semibold mb-1">Move to Playlist</h3>
+        <p className="text-sm text-text-secondary mb-4">
+          Move {moveTargets?.length ?? 0} track{(moveTargets?.length ?? 0) === 1 ? '' : 's'} to:
+        </p>
+        <div className="flex flex-col gap-1 max-h-72 overflow-y-auto">
+          {(() => {
+            // Hide the source playlist when every selected track shares it.
+            const srcIds = new Set(moveTargets?.map((t) => t.playlistId))
+            const onlySource = srcIds.size === 1 ? [...srcIds][0] : null
+            return playlists
+              .filter((p) => p.id !== onlySource)
+              .map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handleMove(p.id)}
+                  className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-left rounded-lg text-text-secondary hover:bg-glass-hover hover:text-text-primary transition"
+                >
+                  <span className="truncate">{p.title}</span>
+                  <span className="text-xs text-text-muted shrink-0">{p.tracks.length}</span>
+                </button>
+              ))
+          })()}
+        </div>
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => setMoveTargets(null)}
+            className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-border-default rounded-lg hover:border-accent/50 transition"
+          >
+            Cancel
+          </button>
+        </div>
+      </Modal>
     </div>
   )
 }

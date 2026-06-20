@@ -16,11 +16,11 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps): JSX.E
   return (
     <div className="flex items-end justify-between gap-4 flex-wrap">
       <div className="min-w-0">
-        <h1 className="text-[22px] font-semibold tracking-tight leading-tight text-text-primary">
+        <h1 className="font-display text-[26px] font-semibold tracking-tight leading-tight text-text-primary">
           {title}
         </h1>
         {subtitle && (
-          <p className="mt-1 text-[13px] text-text-secondary max-w-xl">{subtitle}</p>
+          <p className="mt-1.5 text-[13px] text-text-secondary max-w-xl">{subtitle}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0 pb-0.5">{actions}</div>}

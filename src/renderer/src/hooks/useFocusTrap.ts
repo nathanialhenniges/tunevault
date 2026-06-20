@@ -5,6 +5,11 @@ const FOCUSABLE_SELECTOR =
 
 export function useFocusTrap(ref: RefObject<HTMLElement | null>, onClose?: () => void): void {
   const previousActiveElement = useRef<Element | null>(null)
+  // Keep the latest onClose without making it an effect dependency. Callers pass
+  // an inline arrow (new identity each render); depending on it would re-run the
+  // effect on every keystroke and yank focus back to the first field.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     const container = ref.current
@@ -19,7 +24,7 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, onClose?: () =>
 
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
-        onClose?.()
+        onCloseRef.current?.()
         return
       }
 
@@ -52,5 +57,5 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, onClose?: () =>
         previousActiveElement.current.focus()
       }
     }
-  }, [ref, onClose])
+  }, [ref])
 }

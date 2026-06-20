@@ -11,7 +11,9 @@ import {
   ArrowPathIcon,
   TrashIcon,
   PlusIcon,
-  XMarkIcon
+  XMarkIcon,
+  ArchiveBoxArrowDownIcon,
+  EllipsisHorizontalIcon
 } from '@heroicons/react/24/outline'
 
 export function DeviceView(): JSX.Element {
@@ -24,12 +26,122 @@ export function DeviceView(): JSX.Element {
 
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState('My iPod')
-  const [syncing, setSyncing] = useState<string | null>(null)
+  // Per-device sync state so each device's Sync button is independent (no global
+  // lock disabling every other device).
+  const [syncing, setSyncing] = useState<Set<string>>(new Set())
+  const [progress, setProgress] = useState<Record<string, { current: number; total: number }>>({})
   const [confirmDelete, setConfirmDelete] = useState<Device | null>(null)
+  // Per-device folder status: live = files staged in the folder, moved = already
+  // transferred to the iPod (sitting in .moved/).
+  const [status, setStatus] = useState<Record<string, { live: number; moved: number }>>({})
+  const [archiving, setArchiving] = useState<Set<string>>(new Set())
+  // Manage panel (delete actions) is hidden behind a per-device toggle.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const isSyncing = (id: string): boolean => syncing.has(id)
+  const toggleExpanded = (id: string): void =>
+    setExpanded((s) => {
+      const next = new Set(s)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
 
   useEffect(() => {
     load()
   }, [load])
+
+  const refreshStatus = async (device: Device): Promise<void> => {
+    const s = await window.api.deviceStatus(device.dir)
+    setStatus((prev) => ({ ...prev, [device.id]: s }))
+  }
+
+  // Pull folder status for every device once they're known.
+  useEffect(() => {
+    devices.forEach((d) => void refreshStatus(d))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices.length])
+
+  // Live per-device copy progress (mirrors the metadata-fetch pattern).
+  useEffect(
+    () =>
+      window.api.onSyncDeviceProgress((p) => {
+        setProgress((prev) => ({ ...prev, [p.deviceId]: { current: p.current, total: p.total } }))
+      }),
+    []
+  )
+
+  // Sync one device. reveal=true (manual button) pops the folder in Finder and
+  // toasts a summary; reveal=false (background prune after assign/unassign) is silent.
+  const runSync = async (device: Device, reveal: boolean): Promise<void> => {
+    if (isSyncing(device.id)) return
+    setSyncing((s) => new Set(s).add(device.id))
+    try {
+      const r = await window.api.syncDevice(device, { reveal })
+      if (reveal) {
+        toast.success(
+          `Synced ${r.copied} track${r.copied === 1 ? '' : 's'}` +
+            (r.removed ? `, removed ${r.removed} stale` : '')
+        )
+      }
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setSyncing((s) => {
+        const next = new Set(s)
+        next.delete(device.id)
+        return next
+      })
+      setProgress((prev) => {
+        if (!(device.id in prev)) return prev
+        const next = { ...prev }
+        delete next[device.id]
+        return next
+      })
+      void refreshStatus(device)
+    }
+  }
+
+  // Move everything in the live folder into .moved/ (call after dragging into iTunes).
+  const archive = async (device: Device): Promise<void> => {
+    setArchiving((s) => new Set(s).add(device.id))
+    try {
+      const r = await window.api.archiveDevice(device)
+      toast.success(
+        r.moved
+          ? `Marked ${r.moved} track${r.moved === 1 ? '' : 's'} as transferred`
+          : 'Nothing staged to transfer'
+      )
+      await refreshStatus(device)
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setArchiving((s) => {
+        const next = new Set(s)
+        next.delete(device.id)
+        return next
+      })
+    }
+  }
+
+  const clear = async (device: Device, which: 'moved' | 'live'): Promise<void> => {
+    try {
+      const r = await window.api.clearDevice(device, which)
+      toast.success(`Deleted ${r.deleted} file${r.deleted === 1 ? '' : 's'}`)
+      await refreshStatus(device)
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+  }
+
+  // Add/remove a playlist, then immediately re-mirror the device folder so the
+  // change shows up without waiting for a manual Sync.
+  const toggleAndSync = async (device: Device, playlistId: string): Promise<void> => {
+    const has = device.playlistIds.includes(playlistId)
+    const nextIds = has
+      ? device.playlistIds.filter((id) => id !== playlistId)
+      : [...device.playlistIds, playlistId]
+    await toggleDevicePlaylist(device.id, playlistId)
+    await runSync({ ...device, playlistIds: nextIds }, false)
+  }
 
   const create = async (): Promise<void> => {
     try {
@@ -39,21 +151,6 @@ export function DeviceView(): JSX.Element {
       toast.success(`Device "${device.name}" created`)
     } catch (e) {
       toast.error((e as Error).message)
-    }
-  }
-
-  const sync = async (device: Device): Promise<void> => {
-    setSyncing(device.id)
-    try {
-      const r = await window.api.syncDevice(device)
-      toast.success(
-        `Synced ${r.copied} tracks across ${r.playlists} playlist(s)` +
-          (r.removed ? `, removed ${r.removed} stale` : '')
-      )
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setSyncing(null)
     }
   }
 
@@ -72,7 +169,7 @@ export function DeviceView(): JSX.Element {
     <div className="space-y-6">
       <PageHeader
         title="Devices"
-        subtitle="Create a device, assign playlists to it, then Sync to mirror them into its folder — drag that into iTunes to sync your iPod."
+        subtitle="Create a device, assign playlists to it, then Sync to mirror them into its folder. Drag that into iTunes to sync your iPod."
         actions={
           <button
             onClick={() => setShowNew(true)}
@@ -114,8 +211,23 @@ export function DeviceView(): JSX.Element {
                   <DevicePhoneMobileIcon className="w-5 h-5 text-accent shrink-0" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{device.name}</p>
-                    <p className="text-xs text-text-muted truncate">{device.dir}</p>
+                    <p className="text-xs text-text-muted truncate">
+                      {status[device.id]
+                        ? `${status[device.id].live} staged · ${status[device.id].moved} on iPod`
+                        : device.dir}
+                    </p>
                   </div>
+                  {(status[device.id]?.live ?? 0) > 0 && (
+                    <button
+                      disabled={archiving.has(device.id)}
+                      onClick={() => archive(device)}
+                      title="Move staged files into .moved (mark as transferred to the iPod)"
+                      className="px-3 py-1.5 text-xs bg-glass-hover hover:bg-glass-active rounded-lg btn-press disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <ArchiveBoxArrowDownIcon className="w-4 h-4" />
+                      {archiving.has(device.id) ? 'Moving…' : 'Mark transferred'}
+                    </button>
+                  )}
                   <button
                     onClick={() => window.api.openFolder(device.dir)}
                     className="px-3 py-1.5 text-xs bg-glass-hover hover:bg-glass-active rounded-lg btn-press flex items-center gap-1.5"
@@ -123,14 +235,29 @@ export function DeviceView(): JSX.Element {
                     <FolderOpenIcon className="w-4 h-4" /> Open
                   </button>
                   <button
-                    disabled={syncing !== null}
-                    onClick={() => sync(device)}
+                    disabled={isSyncing(device.id)}
+                    onClick={() => runSync(device, true)}
                     className="btn-accent px-3 py-1.5 text-xs rounded-lg disabled:opacity-50 flex items-center gap-1.5"
                   >
                     <ArrowPathIcon
-                      className={`w-4 h-4 ${syncing === device.id ? 'animate-spin' : ''}`}
+                      className={`w-4 h-4 ${isSyncing(device.id) ? 'animate-spin' : ''}`}
                     />
-                    {syncing === device.id ? 'Syncing…' : 'Sync'}
+                    {isSyncing(device.id)
+                      ? progress[device.id] && progress[device.id].total > 0
+                        ? `Syncing ${progress[device.id].current}/${progress[device.id].total}`
+                        : 'Syncing…'
+                      : 'Sync'}
+                  </button>
+                  <button
+                    onClick={() => toggleExpanded(device.id)}
+                    className={`px-2.5 py-1.5 text-xs rounded-lg btn-press ${
+                      expanded.has(device.id)
+                        ? 'bg-glass-active text-text-primary'
+                        : 'bg-glass-hover hover:bg-glass-active'
+                    }`}
+                    title="Manage folder"
+                  >
+                    <EllipsisHorizontalIcon className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setConfirmDelete(device)}
@@ -140,6 +267,33 @@ export function DeviceView(): JSX.Element {
                     <TrashIcon className="w-4 h-4" />
                   </button>
                 </div>
+
+                {/* Manage panel — hidden until toggled. Holds the destructive
+                    folder actions so they're out of the way. */}
+                {expanded.has(device.id) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg bg-glass-hover px-3 py-2.5">
+                    <span className="text-xs text-text-secondary">
+                      {(status[device.id]?.live ?? 0)} staged · {(status[device.id]?.moved ?? 0)} on iPod
+                    </span>
+                    <div className="flex-1" />
+                    <button
+                      disabled={(status[device.id]?.live ?? 0) === 0}
+                      onClick={() => clear(device, 'live')}
+                      className="px-2.5 py-1 text-xs text-red-500 dark:text-red-400 border border-red-500/25 rounded-lg hover:bg-red-500/10 disabled:opacity-40 flex items-center gap-1.5"
+                      title="Delete files staged in the live folder (originals are kept)"
+                    >
+                      <TrashIcon className="w-3.5 h-3.5" /> Clear staged
+                    </button>
+                    <button
+                      disabled={(status[device.id]?.moved ?? 0) === 0}
+                      onClick={() => clear(device, 'moved')}
+                      className="px-2.5 py-1 text-xs text-red-500 dark:text-red-400 border border-red-500/25 rounded-lg hover:bg-red-500/10 disabled:opacity-40 flex items-center gap-1.5"
+                      title="Delete the transferred (.moved) copies — they'll re-sync as new"
+                    >
+                      <TrashIcon className="w-3.5 h-3.5" /> Clear transferred
+                    </button>
+                  </div>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2">
                   {assigned.length === 0 ? (
@@ -152,7 +306,7 @@ export function DeviceView(): JSX.Element {
                       >
                         {p.title}
                         <button
-                          onClick={() => toggleDevicePlaylist(device.id, p.id)}
+                          onClick={() => toggleAndSync(device, p.id)}
                           className="hover:text-red-500"
                           title="Remove from device"
                         >
@@ -165,7 +319,7 @@ export function DeviceView(): JSX.Element {
                     <select
                       value=""
                       onChange={(e) => {
-                        if (e.target.value) toggleDevicePlaylist(device.id, e.target.value)
+                        if (e.target.value) toggleAndSync(device, e.target.value)
                       }}
                       className="text-xs bg-glass-input-bg border border-[var(--glass-border-edge)] rounded-lg px-2 py-1.5 text-text-secondary"
                     >

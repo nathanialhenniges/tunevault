@@ -42,7 +42,7 @@ function Field({
   children: React.ReactNode
 }): JSX.Element {
   return (
-    <div className={`px-4 py-3 ${stack ? '' : 'flex items-center justify-between gap-4'}`}>
+    <div className={`px-4 py-3.5 ${stack ? '' : 'flex items-center justify-between gap-4'}`}>
       <div className="min-w-0">
         <p className="text-sm font-medium text-text-primary">{label}</p>
         {hint && <p className="text-xs text-text-muted mt-0.5">{hint}</p>}
@@ -326,7 +326,7 @@ export function SettingsView(): JSX.Element {
           TuneVault. This cannot be undone.
         </p>
         <p className="text-sm text-text-secondary mb-6">
-          Your downloaded audio files on disk are <strong>not</strong> deleted — only TuneVault&apos;s
+          Your downloaded audio files on disk are <strong>not</strong> deleted, only TuneVault&apos;s
           records of them.
         </p>
         <div className="flex justify-end gap-3">

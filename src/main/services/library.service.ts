@@ -108,13 +108,23 @@ export class LibraryService {
 
   /** Persist looked-up genres onto matching tracks (atomic single write). */
   setTrackGenres(updates: { trackId: string; genre: string }[]): void {
-    if (!updates.length) return
+    this.applyTrackPatches(updates.map((u) => ({ trackId: u.trackId, genre: u.genre })))
+  }
+
+  /** Apply a batch of field patches (genre/artist/thumbnailUrl) in one atomic write. */
+  applyTrackPatches(
+    patches: { trackId: string; genre?: string; artist?: string; thumbnailUrl?: string }[]
+  ): void {
+    if (!patches.length) return
+    const map = new Map(patches.map((p) => [p.trackId, p]))
     const data = this.loadRaw()
-    const map = new Map(updates.map((u) => [u.trackId, u.genre]))
     for (const pl of data.playlists) {
       for (const t of pl.tracks) {
-        const g = map.get(t.id)
-        if (g) t.genre = g
+        const p = map.get(t.id)
+        if (!p) continue
+        if (p.genre !== undefined) t.genre = p.genre
+        if (p.artist !== undefined) t.artist = p.artist
+        if (p.thumbnailUrl !== undefined) t.thumbnailUrl = p.thumbnailUrl
       }
     }
     this.save(data)
@@ -133,6 +143,74 @@ export class LibraryService {
       if (idx >= 0) pl.tracks[idx] = t
       else pl.tracks.push(t)
     }
+    this.save(data)
+  }
+
+  /**
+   * Apply a metadata patch (title/artist/genre) to a set of tracks. Only the
+   * provided keys are changed. Returns the updated tracks (so the caller can
+   * re-tag their files on disk).
+   */
+  setTrackMetadata(
+    trackIds: string[],
+    patch: { title?: string; artist?: string; genre?: string }
+  ): Track[] {
+    const ids = new Set(trackIds)
+    const data = this.loadRaw()
+    const updated: Track[] = []
+    for (const pl of data.playlists) {
+      for (const t of pl.tracks) {
+        if (!ids.has(t.id)) continue
+        if (patch.title !== undefined) t.title = patch.title
+        if (patch.artist !== undefined) t.artist = patch.artist
+        if (patch.genre !== undefined) t.genre = patch.genre
+        updated.push(t)
+      }
+    }
+    if (updated.length) this.save(data)
+    return updated
+  }
+
+  /** Rename a playlist (metadata only — files stay on disk). */
+  renamePlaylist(playlistId: string, newTitle: string): void {
+    const title = newTitle.trim()
+    if (!title) throw new Error('Playlist name cannot be empty.')
+    const data = this.loadRaw()
+    const pl = data.playlists.find((p) => p.id === playlistId)
+    if (!pl) throw new Error('Playlist not found.')
+    pl.title = title
+    for (const t of pl.tracks) t.playlistTitle = title
+    this.save(data)
+  }
+
+  /** Move tracks out of their current playlists into the target playlist. */
+  moveTracks(trackIds: string[], targetPlaylistId: string): void {
+    const ids = new Set(trackIds)
+    const data = this.loadRaw()
+    const target = data.playlists.find((p) => p.id === targetPlaylistId)
+    if (!target) throw new Error('Target playlist not found.')
+
+    let pos = target.tracks.reduce((m, t) => Math.max(m, t.position), 0)
+    const moving: Track[] = []
+    for (const pl of data.playlists) {
+      if (pl.id === targetPlaylistId) continue
+      const stay: Track[] = []
+      for (const t of pl.tracks) {
+        if (ids.has(t.id)) moving.push(t)
+        else stay.push(t)
+      }
+      pl.tracks = stay
+    }
+    for (const t of moving) {
+      // Skip a track already in the target (id stays unique across the library).
+      if (target.tracks.some((x) => x.id === t.id)) continue
+      t.playlistId = target.id
+      t.playlistTitle = target.title
+      t.position = ++pos
+      target.tracks.push(t)
+    }
+
+    data.playlists = data.playlists.filter((p) => p.tracks.length > 0)
     this.save(data)
   }
 

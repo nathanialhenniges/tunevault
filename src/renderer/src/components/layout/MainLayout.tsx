@@ -7,8 +7,8 @@ interface MainLayoutProps {
   children: React.ReactNode
 }
 
-// Same order as the sidebar nav — Cmd/Ctrl+1..5 jumps between views (native tab feel).
-const VIEW_PATHS = ['/', '/downloads', '/library', '/device', '/settings']
+// Same order as the sidebar nav — Cmd/Ctrl+1..6 jumps between views (native tab feel).
+const VIEW_PATHS = ['/', '/playlists', '/downloads', '/library', '/device', '/settings']
 
 export function MainLayout({ children }: MainLayoutProps): JSX.Element {
   const mainRef = useRef<HTMLElement>(null)
@@ -52,8 +52,11 @@ export function MainLayout({ children }: MainLayoutProps): JSX.Element {
       {!sidebarHidden && <Sidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <TitleBar />
-        <main ref={mainRef} className="flex-1 overflow-y-auto p-4">
-          <div className="max-w-5xl mx-auto h-full flex flex-col">
+        <main ref={mainRef} className="flex-1 overflow-y-auto px-10 py-9">
+          {/* min-h-full (not h-full): full height so short pages can center
+              vertically, but grows with tall pages so the py-9 top/bottom
+              padding actually wraps the content instead of being overflowed. */}
+          <div className="max-w-5xl mx-auto w-full min-h-full flex flex-col">
             {children}
           </div>
         </main>
