@@ -1,0 +1,82 @@
+name: Verify native applications
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            platform: darwin
+            arch: arm64
+            builder: mac
+          - runner: macos-26-intel
+            platform: darwin
+            arch: x64
+            builder: mac
+          - runner: windows-2025
+            platform: win32
+            arch: x64
+            builder: win
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.13.0'
+          cache: npm
+      - name: Assert native runner architecture
+        run: node -e "if(process.platform!=='${{ matrix.platform }}'||process.arch!=='${{ matrix.arch }}')process.exit(1)"
+      - run: npm ci
+      - run: node scripts/prepare-tools.mjs ${{ matrix.platform }} ${{ matrix.arch }}
+      - run: npm run tools:verify
+      - name: Verify native icon catalog
+        if: runner.os == 'macOS'
+        run: node scripts/verify-icon.mjs
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - name: Build production candidate once
+        run: npm run build && npx electron-builder --${{ matrix.builder }} --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Packaged production E2E
+        run: |
+          if [ '${{ matrix.platform }}' = darwin ]; then
+            export TUNEVAULT_EXECUTABLE="$PWD/dist/mac${{ matrix.arch == 'arm64' && '-arm64' || '' }}/TuneVault.app/Contents/MacOS/TuneVault"
+            node scripts/verify-package.mjs "$PWD/dist/mac${{ matrix.arch == 'arm64' && '-arm64' || '' }}/TuneVault.app"
+          else
+            export TUNEVAULT_EXECUTABLE="$PWD/dist/win-unpacked/TuneVault.exe"
+            node scripts/verify-package.mjs "$PWD/dist/win-unpacked"
+          fi
+          npm run test:e2e
+      - name: Installed N to N+1 upgrade fixtures
+        run: node scripts/build-upgrade-candidates.mjs
+      - name: Preserve tested candidate and evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.yml
+            test-results/
+            playwright-report/
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/manifest.json

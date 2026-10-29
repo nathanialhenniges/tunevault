@@ -1,0 +1,68 @@
+name: Prepare or promote verified release
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes for this version
+        required: true
+        type: string
+      publish:
+        description: Publish after every native and authentication gate (separate owner action)
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+  authenticate:
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: release-signing
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.13.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: candidate-*
+          path: dist/downloaded-candidates
+          merge-multiple: true
+      - name: Stage exact tested artifacts
+        run: node scripts/stage-release.mjs
+        env:
+          RELEASE_NOTES: ${{ inputs.notes }}
+      - name: Sign exact envelope bytes with protected release key
+        run: node scripts/release-envelope.mjs
+        env:
+          RELEASE_SIGN_PRIVATE_KEY: ${{ secrets.RELEASE_SIGN_PRIVATE_KEY }}
+      - run: node scripts/check-release.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authenticated-release-candidate
+          path: dist/release-candidate/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    if: inputs.publish
+    needs: authenticate
+    runs-on: ubuntu-24.04
+    environment: release-publish
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24.13.0'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: authenticated-release-candidate
+          path: dist/release-candidate
+      - run: node scripts/check-release.mjs
+      - name: Promote all verified candidates together
+        run: node scripts/publish-release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
