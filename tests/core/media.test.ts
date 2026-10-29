@@ -7,7 +7,6 @@ import {
   writeFile,
   stat,
   copyFile,
-  link,
 } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -646,7 +645,7 @@ it("cached tool diagnostics still reject an altered manifest version", async () 
     await readFile(path.join(toolsDir, "manifest.json"), "utf8"),
   );
   for (const entry of manifest.entries)
-    await link(
+    await copyFile(
       path.join(toolsDir, entry.file),
       path.join(directory, entry.file),
     );
