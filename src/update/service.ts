@@ -228,6 +228,6 @@ export class UpdateService {
       this.cancellation
     )
       throw new Error("Windows update session changed; check again");
-    updater.quitAndInstall(false, true);
+    updater.quitAndInstall(true, true);
   }
 }
