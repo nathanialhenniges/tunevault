@@ -155,7 +155,13 @@ export interface ExportItem {
   occurrenceId: string;
   trackId: string | null;
   title: string;
-  action: "Add" | "Update" | "Already current" | "Unavailable" | "Blocked";
+  action:
+    | "Add"
+    | "Update"
+    | "Reorder-only"
+    | "Already current"
+    | "Unavailable"
+    | "Blocked";
   reason: string;
   estimatedBytes: number;
 }

@@ -49,7 +49,6 @@ const pending = new Map<
 let worker: Electron.UtilityProcess;
 let expectedUrl: string;
 let credentials: Credentials | null = null;
-let quitting = false;
 const commands = new Set([
   "snapshot",
   "settings.update",
@@ -74,6 +73,7 @@ const commands = new Set([
   "playlists.refreshPreview",
   "playlists.refreshApply",
   "targets.create",
+  "targets.testPack",
   "targets.update",
   "export.preview",
   "export.prepare",
@@ -226,11 +226,15 @@ app
       }
     }
     let nativeGlass = false;
+    const glassActive = () =>
+      nativeGlass &&
+      !nativeTheme.prefersReducedTransparency &&
+      !nativeTheme.shouldUseHighContrastColors;
     ipcMain.on("tunevault:appearance", (event) => {
       event.returnValue = {
         appearance,
         accent,
-        nativeGlass,
+        nativeGlass: glassActive(),
         systemDark: nativeTheme.shouldUseDarkColors,
       };
     });
@@ -252,6 +256,11 @@ app
         : resolve("resources/icon.png"),
     });
     if (!app.isPackaged) app.dock?.setIcon(icon);
+    let supportPreview: {
+      token: string;
+      text: string;
+      createdAt: number;
+    } | null = null;
     let jobsActive = false;
     let updateDownloading = false;
     const updates = new UpdateService({
@@ -309,19 +318,14 @@ app
           glass.addView(window.getNativeWindowHandle(), {
             cornerRadius: 12,
             opaque: false,
-          }) >= 0 &&
-          !nativeTheme.prefersReducedTransparency &&
-          !nativeTheme.shouldUseHighContrastColors;
+          }) >= 0;
       } catch {
         nativeGlass = false;
       }
       window.setWindowButtonVisibility(true);
     }
     const updateMaterial = () => {
-      const active =
-        nativeGlass &&
-        !nativeTheme.prefersReducedTransparency &&
-        !nativeTheme.shouldUseHighContrastColors;
+      const active = glassActive();
       window?.setBackgroundColor(
         active
           ? "#00000000"
@@ -376,6 +380,98 @@ app
         )
           return picker(action);
         const input = raw as any;
+        if (action === "diagnostics.preview") {
+          const state = await command("snapshot");
+          let toolVersions: Record<string, string>;
+          try {
+            const { readFile } = await import("node:fs/promises");
+            const manifest = JSON.parse(
+              await readFile(
+                join(
+                  app.isPackaged
+                    ? join(process.resourcesPath, "tools")
+                    : resolve(
+                        "resources/tools",
+                        `${process.platform}-${process.arch}`,
+                      ),
+                  "manifest.json",
+                ),
+                "utf8",
+              ),
+            );
+            toolVersions = Object.fromEntries(
+              manifest.entries
+                .slice(0, 8)
+                .map((tool: any) => [
+                  String(tool.name).slice(0, 40),
+                  String(tool.version).slice(0, 100),
+                ]),
+            );
+          } catch {
+            toolVersions = { bundle: "Manifest unavailable" };
+          }
+          const report = {
+            app: "TuneVault",
+            version: app.getVersion(),
+            platform: process.platform,
+            arch: process.arch,
+            electron: process.versions.electron,
+            node: runtime.node,
+            packaged: app.isPackaged,
+            tools: toolVersions,
+            counts: {
+              tracks: state.tracks.length,
+              playlists: state.playlists.length,
+              targets: state.targets.length,
+              receipts: state.receipts.length,
+            },
+            jobs: Object.fromEntries(
+              [
+                "queued",
+                "running",
+                "completed",
+                "failed",
+                "cancelled",
+                "interrupted",
+              ].map((status) => [
+                status,
+                state.jobs.filter((job: any) => job.status === status).length,
+              ]),
+            ),
+            privacy:
+              "Contains counts and runtime/tool versions only. No library names, media, file paths, source URLs or credentials.",
+          };
+          supportPreview = {
+            token: randomUUID(),
+            text: JSON.stringify(report, null, 2) + "\n",
+            createdAt: Date.now(),
+          };
+          return { token: supportPreview.token, text: supportPreview.text };
+        }
+        if (action === "diagnostics.export") {
+          if (
+            !supportPreview ||
+            input?.token !== supportPreview.token ||
+            Date.now() - supportPreview.createdAt > 300000
+          )
+            throw new Error("Preview the report again before saving");
+          const reviewed = supportPreview.text;
+          const selected = await dialog.showSaveDialog(window!, {
+            title: "Save reviewed support report",
+            defaultPath: "TuneVault-support.json",
+            filters: [{ name: "JSON report", extensions: ["json"] }],
+          });
+          if (selected.canceled || !selected.filePath) return null;
+          const { writeFile, rename, rm } = await import("node:fs/promises");
+          const temporary = selected.filePath + "." + randomUUID() + ".partial";
+          try {
+            await writeFile(temporary, reviewed, { flag: "wx", mode: 0o600 });
+            await rename(temporary, selected.filePath);
+          } finally {
+            await rm(temporary, { force: true });
+          }
+          return { saved: true };
+        }
         if (action === "credentials.status") return credentials!.status();
         if (action === "credentials.disconnect") {
           const state = await command("snapshot");
@@ -469,7 +565,7 @@ app
             platform: process.platform,
             arch: process.arch,
             runtime,
-            nativeGlass,
+            nativeGlass: glassActive(),
             packaged: app.isPackaged,
           };
         if (action === "openExternal") {
@@ -540,6 +636,7 @@ app
             "source.acquire",
             "export.prepare",
             "mixes.split",
+            "targets.testPack",
             "jobs.retry",
           ].includes(action)
         )
@@ -655,16 +752,11 @@ app.on("second-instance", () => {
   window?.focus();
 });
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", (event) => {
-  if (quitting) return;
-  event.preventDefault();
-  quitting = true;
-  void credentials?.clearSession().finally(() => {
-    worker?.kill();
-    app.quit();
-  });
-  if (!credentials) {
-    worker?.kill();
-    app.quit();
+app.on("before-quit", () => {
+  try {
+    credentials?.clearSessionSync();
+  } catch {
+    console.warn("Temporary credential cleanup will retry on next launch");
   }
+  worker?.kill();
 });

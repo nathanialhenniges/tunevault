@@ -30,6 +30,8 @@ jobs:
             builder: win
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 50
+    env:
+      TUNEVAULT_E2E_VISIBLE: "1"
     defaults:
       run:
         shell: bash
@@ -37,7 +39,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: '24.13.0'
+          node-version: "24.13.0"
           cache: npm
       - name: Assert native runner architecture
         run: node -e "if(process.platform!=='${{ matrix.platform }}'||process.arch!=='${{ matrix.arch }}')process.exit(1)"
@@ -53,7 +55,7 @@ jobs:
       - name: Build production candidate once
         run: npm run build && npx electron-builder --${{ matrix.builder }} --${{ matrix.arch }} --publish never
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Packaged production E2E
         run: |
           if [ '${{ matrix.platform }}' = darwin ]; then

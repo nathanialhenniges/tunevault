@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("tunevault", {
     contextIsolated: process.contextIsolated,
   },
   nativeGlass: boot.nativeGlass,
+  platform: process.platform,
   bootAppearance: boot,
   onSystemThemeChanged: (callback: (dark: boolean) => void) => {
     const listener = (_event: unknown, dark: boolean) => callback(dark);

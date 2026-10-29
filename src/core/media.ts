@@ -12,7 +12,7 @@ import { StringDecoder } from "node:string_decoder";
 import { parseFile } from "music-metadata";
 import sharp from "sharp";
 import type { Metadata, Track, Profile } from "../shared/types";
-import { hashFile } from "./safety";
+import { hashFile, redact } from "./safety";
 export const fields = [
   "title",
   "artist",
@@ -40,6 +40,7 @@ export async function run(
   args: string[],
   signal?: AbortSignal,
   onLine?: (line: string) => void,
+  limits: { timeoutMs?: number; maxBytes?: number } = {},
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {
@@ -50,6 +51,7 @@ export async function run(
       stdio: ["ignore", "pipe", "pipe"],
     });
     const decoder = new StringDecoder("utf8");
+    const sensitive = args.includes("--cookies");
     let output = "",
       error = "",
       buffer = "",
@@ -78,15 +80,17 @@ export async function run(
         abort();
         reject(new Error("Media operation timed out"));
       },
-      30 * 60 * 1000,
+      limits.timeoutMs ?? 30 * 60 * 1000,
     );
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
     child.stdout.on("data", (chunk: Buffer) => {
       bytes += chunk.length;
-      if (bytes > 16 * 1024 * 1024) {
+      if (bytes > (limits.maxBytes ?? 16 * 1024 * 1024)) {
         abort();
-        return reject(new Error("Tool response exceeded 16 MB"));
+        return reject(
+          new Error("Tool response exceeded the allowed output size"),
+        );
       }
       const str = decoder.write(chunk);
       output += str;
@@ -98,7 +102,14 @@ export async function run(
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      error = (error + chunk.toString()).slice(-4000);
+      if (sensitive) {
+        const status = /HTTP(?: Error| status| code)?\s*([45]\d{2})/i.exec(
+          chunk.toString(),
+        )?.[1];
+        error = status
+          ? `HTTP ${status}; credentialed source details withheld`
+          : "Credentialed source details withheld";
+      } else error = (error + chunk.toString()).slice(-4000);
     });
     child.on("error", finish);
     child.on("close", (code) => {
@@ -112,7 +123,7 @@ export async function run(
           : code === 0
             ? undefined
             : new Error(
-                `Media tool failed (${code}): ${error.replace(/https?:\/\/\S+/g, "[URL]").slice(-1000)}`,
+                `Media tool failed (${code}): ${redact(error).slice(-1000)}`,
               ),
       );
     });
@@ -348,8 +359,10 @@ export async function writeMedia(
       file.tag.comment = track.metadata.comment;
       file.tag.isrc = track.metadata.isrc;
       file.tag.musicBrainzTrackId = track.metadata.musicbrainzId;
-      if (ext === ".mp3")
+      if (ext === ".mp3") {
         (file.getTag(TagTypes.Id3v2, true) as Id3v2Tag).version = 3;
+        file.removeTags(TagTypes.Id3v1);
+      }
       file.save();
     } finally {
       file.dispose();

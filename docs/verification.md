@@ -7,11 +7,16 @@ passed. Final platform CI and review results are appended as they become known.
 ## Source and real file processing
 
 - TypeScript and source/test ESLint passed.
-- 47 unit/integration tests passed: SQLite/settings, native file grants,
+- 65 unit/integration tests passed: SQLite/settings, native file grants,
   credential storage/cleanup contract, reference occurrence order/refresh,
   safe paths, chapter parsing, target identity/history, backup/revision restore,
   acquisition failure/retry/cancel with controlled provider fixtures, updater
   signatures/feed/hash/cache failures and renderer identity rules.
+- Queued imports resume after restart; interrupted running work remains retryable.
+  Synthetic compatibility packs exercised MP3/AAC/ALAC/FLAC/original profiles.
+  Reordered playlists reused verified audio without recopying it. Volume swaps
+  at audio, manifest and receipt boundaries failed safely; active target edits
+  were rejected until writer cleanup completed.
 - Actual bundled FFmpeg/ffprobe processed independently generated MP3, AAC,
   ALAC and FLAC. Independent tag reads checked title, artist, album credits,
   track/disc values, date, genre, composer, comment, ISRC/MBID and embedded art.
@@ -32,6 +37,8 @@ passed. Final platform CI and review results are appended as they become known.
   flow, sandbox/context isolation checks, persisted themes and legal dialogs.
   Final packaged rerun also passed native System appearance events while hidden
   and preservation of unsaved inspector edits across all four themes.
+  The latest local run also passed Reduce Transparency fallback/reactivation
+  and exact preview-to-save support report contents.
 - The 10,000-row packaged fixture passed: approximately 1.2–4.0 s launch to
   rendered count, 28–409 ms search and 94–782 ms page/scroll across two local
   runs with different system load.
@@ -41,12 +48,14 @@ passed. Final platform CI and review results are appended as they become known.
 - Native NSGlassEffectView loads on this macOS 27 host. The app uses its public
   basic view API and no private variant methods. Native glass is limited by
   opaque content surfaces and accessibility fallbacks. macOS 26-specific
-  visual checks still need that OS/native runner.
+  native loading also passed on macOS 26 arm64 and Intel CI runners.
+  Owner-driven visual/accessibility checks remain separate.
 - Icon Composer/actool compiled Aqua, DarkAqua and tintable icon stacks plus
   legacy ICNS. Assets.car/Info.plist and unchanged source PNG were verified.
 
-Automation uses hidden windows to avoid flashing theme-test screens on the
-owner's desktop. It runs the real packaged renderer with the same sandbox;
+Local automation uses hidden windows to avoid flashing theme-test screens on
+the owner's desktop; native CI uses visible windows on its isolated runner.
+Both run the real packaged renderer with the same sandbox;
 native dialogs are deterministically selected in tests. That does not prove
 physical drag/drop, OS prompts or native picker interaction by a person.
 
@@ -59,11 +68,17 @@ This was a disposable installer-test build, not a public release or proof of
 Gatekeeper/quarantine handling. Production candidate hash matching remains a
 separate release gate.
 
+CI run 40840853255 at b617734 passed both macOS 26 native architectures,
+including production packaging/E2E and installed N-to-N+1 replacement.
+Windows passed source/media/package checks but timed out capturing a narrow
+renderer screenshot. Native capture and quit handling were corrected locally;
+the final cross-platform run must establish the current candidate result.
+
 ## Remaining external or manual gates
 
 - Native Windows x64 NSIS install/authenticated update/uninstall retention.
-- Native macOS x64 packaging/installed upgrade and declared minimum OS checks.
-- Real macOS 26 appearance, VoiceOver/NVDA, owner-driven native dialogs/drop,
+- Declared minimum OS checks; CI does not exercise the oldest supported OS.
+- Hands-on macOS 26 appearance, VoiceOver/NVDA, owner-driven native dialogs/drop,
   fresh quarantine/Gatekeeper and Windows reputation prompts.
 - Real provider permission/access and live YouTube/MusicBrainz/CAA behavior;
   no copyrighted live media or real account cookies were used as fixtures.

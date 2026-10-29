@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { run as runTool } from "../core/media";
 
-const run = promisify(execFile);
+const verifiedVersions = new Map<string, string>();
 export type ToolPaths = Record<
   "ffmpeg" | "ffprobe" | "yt-dlp" | "deno",
   string
@@ -45,6 +44,7 @@ export async function verifyTools(
   directory: string,
   platform = process.platform,
   arch = process.arch,
+  signal?: AbortSignal,
 ): Promise<ToolPaths> {
   const root = await realpath(directory);
   const text = await readFile(join(root, "manifest.json"), "utf8");
@@ -66,6 +66,9 @@ export async function verifyTools(
     if (
       !entry ||
       entry.file !== expected ||
+      typeof entry.version !== "string" ||
+      !entry.version ||
+      entry.version.length > 100 ||
       !/^[a-f0-9]{64}$/.test(entry.sha256)
     )
       throw new Error(`Missing or invalid ${name} manifest`);
@@ -78,21 +81,29 @@ export async function verifyTools(
       throw new Error(`${name} digest mismatch`);
     if (!supportsArchitecture(bytes, platform, arch))
       throw new Error(`${name} executable architecture mismatch`);
-    const { stdout, stderr } = await run(
-      path,
-      [name.startsWith("ff") ? "-version" : "--version"],
-      {
-        timeout: 15_000,
-        maxBuffer: 256_000,
-        windowsHide: true,
-        env: { ...process.env, PATH: "" },
-      },
-    );
-    const output = stdout + stderr;
-    if (!output.includes(entry.version))
-      throw new Error(`${name} version mismatch`);
-    if (name.startsWith("ff") && output.includes("--enable-nonfree"))
-      throw new Error("Non-redistributable FFmpeg build rejected");
+    const proof = `${platform}:${arch}:${name}:${entry.sha256}:${entry.version}`;
+    let output = verifiedVersions.get(proof);
+    if (output === undefined) {
+      const args =
+        name === "yt-dlp"
+          ? [
+              "--ignore-config",
+              "--no-plugin-dirs",
+              "--no-remote-components",
+              "--version",
+            ]
+          : [name.startsWith("ff") ? "-version" : "--version"];
+      output = await runTool(path, args, signal, undefined, {
+        timeoutMs: name === "yt-dlp" ? 90000 : 30000,
+        maxBytes: 256000,
+      });
+      if (!output.includes(entry.version))
+        throw new Error(`${name} version mismatch`);
+      if (name.startsWith("ff") && output.includes("--enable-nonfree"))
+        throw new Error("Non-redistributable FFmpeg build rejected");
+      if (verifiedVersions.size >= 32) verifiedVersions.clear();
+      verifiedVersions.set(proof, output);
+    }
     paths[name] = path;
   }
   for (const [kind, required] of [
@@ -102,12 +113,13 @@ export async function verifyTools(
       ["mp3", "aac", "alac", "flac", "opus", "vorbis", "png", "mjpeg"],
     ],
   ] as const) {
-    const { stdout } = await run(paths.ffmpeg!, ["-hide_banner", `-${kind}`], {
-      timeout: 15_000,
-      maxBuffer: 256_000,
-      windowsHide: true,
-      env: { ...process.env, PATH: "" },
-    });
+    const stdout = await runTool(
+      paths.ffmpeg!,
+      ["-hide_banner", `-${kind}`],
+      signal,
+      undefined,
+      { timeoutMs: 30000, maxBytes: 256000 },
+    );
     const supported = new Set(
       stdout.split("\n").map((line) => line.trim().split(/\s+/)[1]),
     );

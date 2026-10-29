@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 interface Window {
   tunevault: {
+    platform: string;
     nativeGlass?: boolean;
     onSystemThemeChanged(callback: (dark: boolean) => void): () => void;
     bootAppearance?: {

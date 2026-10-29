@@ -26,7 +26,7 @@ test("credentials are opt-in, bounded, encrypted at rest and removed on disconne
       ),
     ).toBe(false);
     expect(await service.status()).toMatchObject({ connected: true });
-    await service.clearSession();
+    service.clearSessionSync();
     await expect(stat(path)).rejects.toThrow();
     const reopened = new Credentials(data, temp, storage);
     expect(await reopened.initialize()).toBeTruthy();

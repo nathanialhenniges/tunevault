@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { launch, choose } from "./launch";
+import { launch, choose, capture, close } from "./launch";
 import { mkdir, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -39,6 +39,47 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
       !native.highContrast
     )
       expect(info.nativeGlass).toBe(true);
+    if (info.nativeGlass) {
+      await app.evaluate(({ nativeTheme }) => {
+        (globalThis as any).__transparencyDescriptor =
+          Object.getOwnPropertyDescriptor(
+            nativeTheme,
+            "prefersReducedTransparency",
+          );
+        Object.defineProperty(nativeTheme, "prefersReducedTransparency", {
+          configurable: true,
+          get: () => true,
+        });
+        nativeTheme.emit("updated");
+      });
+      try {
+        await expect(page.locator("html")).toHaveAttribute(
+          "data-native-glass",
+          "false",
+        );
+        expect(
+          (await page.evaluate(() => window.tunevault.invoke("app.info")))
+            .nativeGlass,
+        ).toBe(false);
+      } finally {
+        await app.evaluate(({ nativeTheme }) => {
+          const original = (globalThis as any).__transparencyDescriptor;
+          if (original)
+            Object.defineProperty(
+              nativeTheme,
+              "prefersReducedTransparency",
+              original,
+            );
+          else delete (nativeTheme as any).prefersReducedTransparency;
+          delete (globalThis as any).__transparencyDescriptor;
+          nativeTheme.emit("updated");
+        });
+      }
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-native-glass",
+        "true",
+      );
+    }
 
     expect(info.runtime.sqlite).toBe(true);
     const diagnostics = await page.evaluate(() =>
@@ -138,6 +179,24 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
     );
     expect(exported.receipts).toHaveLength(1);
     expect(exported.receipts[0].evidence).toBe("exported");
+    const report = await page.evaluate(() =>
+      window.tunevault.invoke("diagnostics.preview"),
+    );
+    expect(JSON.parse(report.text).counts.tracks).toBe(1);
+    expect(report.text).not.toContain(root);
+    expect(report.text).not.toContain("Synthetic 音楽");
+    const reportPath = join(root, "reviewed-report.json");
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+    }, reportPath);
+    expect(
+      await page.evaluate(
+        (token) => window.tunevault.invoke("diagnostics.export", { token }),
+        report.token,
+      ),
+    ).toEqual({ saved: true });
+    expect(await readFile(reportPath, "utf8")).toBe(report.text);
+
     await page
       .getByRole("button", { name: "Settings & About", exact: true })
       .click();
@@ -163,9 +222,39 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
           "data-accent",
           accent,
         );
-        await page.screenshot({
-          path: `artifacts/screenshots/packaged-${appearance}-${accent}.png`,
+        const contrasts = await page.evaluate(() => {
+          const sidebar = document.querySelector(".sidebar")!;
+          const muted = sidebar.querySelector(".muted")!;
+          const canvas = document.createElement("canvas");
+          canvas.width = canvas.height = 1;
+          const ctx = canvas.getContext("2d")!;
+          const pixel = (paint: string, base: string) => {
+            ctx.fillStyle = base;
+            ctx.fillRect(0, 0, 1, 1);
+            ctx.fillStyle = paint;
+            ctx.fillRect(0, 0, 1, 1);
+            return Array.from(ctx.getImageData(0, 0, 1, 1).data).slice(0, 3);
+          };
+          const lum = (values: number[]) =>
+            values
+              .map((x) => x / 255)
+              .map((x) =>
+                x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4,
+              )
+              .reduce((n, x, i) => n + x * [0.2126, 0.7152, 0.0722][i], 0);
+          return ["#000", "#fff"].map((base) => {
+            const bg = lum(
+              pixel(getComputedStyle(sidebar).backgroundColor, base),
+            );
+            const fg = lum(pixel(getComputedStyle(muted).color, base));
+            return (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
+          });
         });
+        expect(Math.min(...contrasts)).toBeGreaterThanOrEqual(4.5);
+        await capture(
+          app,
+          `artifacts/screenshots/packaged-${appearance}-${accent}.png`,
+        );
       }
     await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
       "Unsaved theme-test draft",
@@ -205,16 +294,15 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1024, 768),
     );
-    await page.screenshot({
-      path: "artifacts/screenshots/packaged-narrow.png",
-    });
+    await page.waitForFunction(() => innerWidth < 1200);
+    await capture(app, "artifacts/screenshots/packaged-narrow.png");
     await page.evaluate(() =>
       window.tunevault.invoke("settings.update", {
         appearance: "dark",
         accent: "orange",
       }),
     );
-    await app.close();
+    await close(app);
     closed = true;
     const next = await launch(dataDir);
     try {
@@ -234,11 +322,11 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
         "dark",
       );
     } finally {
-      await next.app.close();
+      await close(next.app);
       await rm(next.root, { recursive: true, force: true });
     }
   } finally {
-    if (!closed) await app.close();
+    if (!closed) await close(app);
     await rm(root, { recursive: true, force: true });
   }
 });

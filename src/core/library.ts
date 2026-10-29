@@ -39,6 +39,7 @@ import {
   text,
   ids,
   hashFile,
+  redact,
   safeName,
   confined,
   youtubeUrl,
@@ -89,6 +90,7 @@ const defaultProfile: Profile = {
 export class LibraryService {
   private db: DatabaseSync;
   private toolsPromise: Promise<ToolPaths> | null = null;
+  private toolsAbort = new AbortController();
   private running = new Map<string, AbortController>();
   private pumping = false;
   private closed = false;
@@ -145,8 +147,13 @@ export class LibraryService {
           updatedAt: now(),
         });
   }
+  resumeQueued() {
+    void this.pump();
+  }
   close() {
+    if (this.closed) return;
     this.closed = true;
+    this.toolsAbort.abort();
     for (const controller of this.running.values()) controller.abort();
     this.db.close();
   }
@@ -233,7 +240,12 @@ export class LibraryService {
       .run(JSON.stringify(value));
   }
   private tools() {
-    return (this.toolsPromise ??= verifyTools(this.toolsDir));
+    return (this.toolsPromise ??= verifyTools(
+      this.toolsDir,
+      process.platform,
+      process.arch,
+      this.toolsAbort.signal,
+    ));
   }
   async snapshot(): Promise<Snapshot> {
     const tracks = this.all<Track>("tracks");
@@ -338,7 +350,9 @@ export class LibraryService {
               path: file,
               ...info,
               duplicate: this.all<Track>("tracks").some(
-                (t) => t.hash === info.hash,
+                (t) =>
+                  t.hash === info.hash ||
+                  (t.source?.provider === "local" && t.source.id === info.hash),
               ),
             });
           } catch (e) {
@@ -372,23 +386,32 @@ export class LibraryService {
           data.addLocks === undefined ? undefined : this.locks(data.addLocks),
         );
       case "tracks.undo": {
-        for (const id of ids(data.ids)) {
-          const track = this.get<Track>("tracks", id);
-          const revisions = this.all<{
-            id: string;
-            trackId: string;
-            track: Track;
-          }>("revisions").filter((r) => r.trackId === id);
-          const previous = revisions.at(-1);
+        const revisions = this.all<{
+          id: string;
+          trackId: string;
+          track: Track;
+        }>("revisions");
+        const undo = ids(data.ids).map((id) => {
+          const track = this.get<Track>("tracks", id),
+            previous = revisions
+              .filter((revision) => revision.trackId === id)
+              .at(-1);
           if (!previous) throw new Error("No saved metadata revision to undo");
           if (!existsSync(previous.track.path))
             throw new Error("Previous audio revision is missing");
-          this.save("tracks", {
-            ...previous.track,
-            revision: track.revision + 1,
-          });
-          this.db.prepare("DELETE FROM revisions WHERE id=?").run(previous.id);
-        }
+          return { track, previous };
+        });
+        this.transaction(() => {
+          for (const { track, previous } of undo) {
+            this.save("tracks", {
+              ...previous.track,
+              revision: track.revision + 1,
+            });
+            this.db
+              .prepare("DELETE FROM revisions WHERE id=?")
+              .run(previous.id);
+          }
+        });
         return this.snapshot();
       }
       case "artwork.preview": {
@@ -631,6 +654,17 @@ export class LibraryService {
       case "targets.create":
       case "targets.update":
         return this.target(action, data);
+      case "targets.testPack": {
+        const target = this.get<Target>("targets", data.targetId);
+        if (!target.destination || !existsSync(target.destination))
+          throw new Error(
+            "Choose an available target folder before generating a test pack",
+          );
+        return this.enqueue("export", {
+          targetId: target.id,
+          compatibilityTest: true,
+        });
+      }
       case "export.preview":
         return this.exportPlan(data);
       case "export.prepare": {
@@ -1065,7 +1099,9 @@ export class LibraryService {
           this.updateJob(job.id, {
             status: "completed",
             progress: 1,
-            message: "Completed",
+            message: job.payload.compatibilityTest
+              ? "Synthetic test pack generated; hardware playback is not verified"
+              : "Completed",
           });
         } catch (e) {
           this.updateJob(job.id, {
@@ -1087,7 +1123,13 @@ export class LibraryService {
       signal.throwIfAborted();
       const source = files[i];
       const info = await inspect(source, tools, signal);
-      if (!this.all<Track>("tracks").some((t) => t.hash === info.hash)) {
+      if (
+        !this.all<Track>("tracks").some(
+          (t) =>
+            t.hash === info.hash ||
+            (t.source?.provider === "local" && t.source.id === info.hash),
+        )
+      ) {
         const id = randomUUID(),
           dest = await this.archiveCopy(source, id, path.extname(source));
         const image = await embeddedArtwork(
@@ -1533,6 +1575,19 @@ export class LibraryService {
   private target(action: string, data: Record<string, any>): Target {
     const previous =
       action === "targets.update" ? this.get<Target>("targets", data.id) : null;
+    if (
+      previous &&
+      (this.activeTargets.has(previous.id) ||
+        this.all<Job>("jobs").some(
+          (job) =>
+            job.kind === "export" &&
+            job.payload.targetId === previous.id &&
+            ["queued", "running"].includes(job.status),
+        ))
+    )
+      throw new Error(
+        "Wait for this target's queued or active export to finish before editing it",
+      );
     const name = text(data.name ?? previous?.name ?? "", 200);
     if (!name.trim()) throw new Error("Name this target");
     const transport = data.transport ?? previous?.transport ?? "folder";
@@ -1659,7 +1714,20 @@ export class LibraryService {
     const safetyReserve = 16 * 1024 * 1024;
     const items: ExportPlan["items"] = [],
       omissions: ExportPlan["omissions"] = [];
-    let total = 0;
+    const reusable = new Map<
+      string,
+      { receipt: Receipt; bytes: number } | null
+    >();
+    let targetRoot: string | null = null;
+    try {
+      targetRoot = await realpath(
+        await confined(target.destination, `TuneVault-${target.id}`),
+      );
+    } catch {
+      /* A new or disconnected target has no reusable files yet. */
+    }
+    let total = 0,
+      selectedBytes = 0;
     for (let ordinal = 0; ordinal < selection.entries.length; ordinal++) {
       const entry = selection.entries[ordinal];
       let track: Track | null = null;
@@ -1692,14 +1760,41 @@ export class LibraryService {
         omissions.push({ ordinal: ordinal + 1, title, reason });
         continue;
       }
-      const current = receipts.some(
-        (r) =>
-          r.trackId === track!.id &&
-          r.trackRevision === track!.revision &&
-          r.profileRevision === target.profile.revision &&
-          r.playlistRevision === selection.playlistRevision &&
-          existsSync(r.path),
-      );
+      const key = `${track.id}-${track.revision}-${target.profile.revision}`;
+      if (!reusable.has(key)) {
+        let found: { receipt: Receipt; bytes: number } | null = null;
+        const candidates = receipts
+          .filter(
+            (r) =>
+              r.trackId === track!.id &&
+              r.trackRevision === track!.revision &&
+              r.profileRevision === target.profile.revision,
+          )
+          .sort(
+            (a, b) =>
+              Number(b.playlistRevision === selection.playlistRevision) -
+              Number(a.playlistRevision === selection.playlistRevision),
+          );
+        for (const receipt of candidates) {
+          try {
+            const actual = await realpath(receipt.path);
+            if (
+              !targetRoot ||
+              !actual.startsWith(targetRoot + path.sep) ||
+              (await hashFile(actual)) !== receipt.hash
+            )
+              continue;
+            found = { receipt, bytes: (await stat(actual)).size };
+            break;
+          } catch {
+            /* Missing or changed prior files require a fresh copy. */
+          }
+        }
+        reusable.set(key, found);
+      }
+      const previous = reusable.get(key);
+      const current =
+        previous?.receipt.playlistRevision === selection.playlistRevision;
       const compatible =
         target.profile.format === "original" ||
         (target.profile.format === "mp3" && track.codec === "mp3") ||
@@ -1715,7 +1810,8 @@ export class LibraryService {
                 ? (target.profile.bitrate * 1000) / 8
                 : track.sampleRate * 4),
           );
-      total += current ? 0 : estimatedBytes;
+      selectedBytes += previous?.bytes ?? estimatedBytes;
+      total += previous ? 0 : estimatedBytes;
       items.push({
         occurrenceId: entry.id,
         trackId: track.id,
@@ -1725,22 +1821,28 @@ export class LibraryService {
             ? "Blocked"
             : current
               ? "Already current"
-              : receipts.some((r) => r.trackId === track!.id)
-                ? "Update"
-                : "Add",
+              : previous
+                ? "Reorder-only"
+                : receipts.some((r) => r.trackId === track!.id)
+                  ? "Update"
+                  : "Add",
         reason:
           availableBytes === null
             ? "Destination disconnected"
-            : compatible
-              ? "Reuse compatible audio without lossy re-encoding"
-              : `Convert to ${target.profile.format.toUpperCase()}${["flac", "alac"].includes(target.profile.format) && track.source?.quality.includes("Lossy") ? " (lossy history preserved)" : ""}`,
-        estimatedBytes,
+            : current
+              ? "Hash-verified audio and playlist revision are already current"
+              : previous
+                ? "Reuse hash-verified audio; only ordered playlist references need writing"
+                : compatible
+                  ? "Reuse compatible audio without lossy re-encoding"
+                  : `Convert to ${target.profile.format.toUpperCase()}${["flac", "alac"].includes(target.profile.format) && track.source?.quality.includes("Lossy") ? " (lossy history preserved)" : ""}`,
+        estimatedBytes: previous ? 0 : estimatedBytes,
       });
     }
     if (
       availableBytes !== null &&
       (total + safetyReserve > availableBytes ||
-        (target.budget !== null && total > target.budget))
+        (target.budget !== null && selectedBytes > target.budget))
     )
       for (const item of items)
         if (item.action !== "Unavailable") {
@@ -1779,11 +1881,15 @@ export class LibraryService {
     this.activeTargets.add(target.id);
     const batchId = job.id;
     const selected = this.selection(data);
-    const stage = path.join(this.requireVault(), ".jobs", batchId);
-    await mkdir(stage, { recursive: true });
+    const stage = path.join(
+      data.compatibilityTest ? this.dataDir : this.requireVault(),
+      ".jobs",
+      batchId,
+    );
     try {
-      const plan = await this.exportPlan(data);
-      if (plan.items.some((i) => i.action === "Blocked"))
+      await mkdir(stage, { recursive: true });
+      const plan = data.compatibilityTest ? null : await this.exportPlan(data);
+      if (plan?.items.some((i) => i.action === "Blocked"))
         throw new Error("Destination disconnected or insufficient space");
       const tools = await this.tools();
       const receipts: Receipt[] = [],
@@ -1824,6 +1930,29 @@ export class LibraryService {
         }
         this.save("targets", target);
       }
+      if (data.compatibilityTest) {
+        await this.compatibilityPack(
+          job,
+          target,
+          targetRoot,
+          stage,
+          tools,
+          signal,
+        );
+        return;
+      }
+      if (!plan) throw new Error("Export preview unavailable");
+      const verifyVolume = async () => {
+        const currentMarker = await confined(
+          targetRoot,
+          ".tunevault-volume-id",
+        );
+        if (
+          (await stat(currentMarker)).size !== 36 ||
+          (await readFile(currentMarker, "utf8")) !== target.volumeIdentity
+        )
+          throw new Error("Destination identity changed during export");
+      };
       const previousReceipts = this.all<Receipt>("receipts").filter(
         (r) => r.targetId === target.id,
       );
@@ -1904,7 +2033,6 @@ export class LibraryService {
             previous.trackId !== track.id ||
             previous.trackRevision !== track.revision ||
             previous.profileRevision !== target.profile.revision ||
-            path.basename(previous.path) !== name ||
             previous.hash !== rendered.hash ||
             !existsSync(previous.path)
           )
@@ -1921,6 +2049,7 @@ export class LibraryService {
           reused = true;
           break;
         }
+        await verifyVolume();
         if (!reused) {
           if (
             rendered.bytes + plan.safetyReserve >
@@ -1934,6 +2063,7 @@ export class LibraryService {
             signal.throwIfAborted();
             if ((await hashFile(temporary)) !== rendered.hash)
               throw new Error("Destination copy failed hash verification");
+            await verifyVolume();
             await rename(temporary, dest);
             if ((await hashFile(dest)) !== rendered.hash)
               throw new Error("Destination changed after copy");
@@ -1974,6 +2104,7 @@ export class LibraryService {
         });
       }
       const batchRoot = await confined(targetRoot, batchId);
+      await verifyVolume();
       await mkdir(batchRoot, { recursive: true });
       signal.throwIfAborted();
       await writeFile(
@@ -1981,16 +2112,19 @@ export class LibraryService {
         playlistLines.join("\n") + "\n",
         { encoding: "utf8" },
       );
+      await verifyVolume();
       await rename(
         await confined(batchRoot, "playlist.m3u8.partial"),
         await confined(batchRoot, "playlist.m3u8"),
       );
-      if (target.profile.legacyPlaylist)
+      if (target.profile.legacyPlaylist) {
+        await verifyVolume();
         await writeFile(
           await confined(batchRoot, "playlist.m3u"),
           playlistLines.join("\r\n") + "\r\n",
           { encoding: "utf8" },
         );
+      }
       const manifest = {
         schema: 1,
         targetId: target.id,
@@ -2009,11 +2143,13 @@ export class LibraryService {
         await confined(batchRoot, "manifest.json.partial"),
         JSON.stringify(manifest, null, 2),
       );
+      await verifyVolume();
       await rename(
         await confined(batchRoot, "manifest.json.partial"),
         await confined(batchRoot, "manifest.json"),
       );
       signal.throwIfAborted();
+      await verifyVolume();
       this.transaction(() => {
         for (const receipt of receipts) this.save("receipts", receipt);
         const current = this.get<Job>("jobs", job.id);
@@ -2031,6 +2167,191 @@ export class LibraryService {
     } finally {
       this.activeTargets.delete(target.id);
       await rm(stage, { recursive: true, force: true });
+    }
+  }
+  private async compatibilityPack(
+    job: Job,
+    target: Target,
+    targetRoot: string,
+    stage: string,
+    tools: ToolPaths,
+    signal: AbortSignal,
+  ) {
+    const pack = path.join(stage, "pack");
+    await mkdir(pack);
+    const cover = path.join(stage, "synthetic-cover.jpg");
+    await sharp({
+      create: { width: 240, height: 240, channels: 3, background: "#00ACED" },
+    })
+      .jpeg()
+      .toFile(cover);
+    const image = await artwork(
+      cover,
+      stage,
+      target.profile.artworkSize,
+      target.profile.artworkBytes,
+    );
+    const files: {
+      name: string;
+      codec: string;
+      hash: string;
+      bytes: number;
+      title: string;
+    }[] = [];
+    for (const [index, title] of [
+      "Test A — 銀の狼",
+      "Test B — Música",
+    ].entries()) {
+      signal.throwIfAborted();
+      const source = path.join(stage, `tone-${index}.flac`);
+      await run(
+        tools.ffmpeg,
+        [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          `sine=frequency=${440 + index * 220}:duration=2`,
+          "-c:a",
+          "flac",
+          source,
+        ],
+        signal,
+      );
+      const info = await inspect(source, tools, signal);
+      const track: Track = {
+        ...info,
+        id: randomUUID(),
+        path: source,
+        originalPath: source,
+        artwork: image,
+        revision: 1,
+        favorite: false,
+        missing: false,
+        source: null,
+        metadata: {
+          ...info.metadata,
+          title,
+          artist: "TuneVault synthetic test",
+          album: "Generated compatibility tones",
+          albumArtist: "TuneVault",
+          trackNumber: String(index + 1),
+          trackTotal: "2",
+          comment:
+            "Synthetic test tone. Preparing this file does not verify transfer, playback or hardware compatibility.",
+        },
+      };
+      const name = `${String(index + 1).padStart(2, "0")} - ${safeName(title)}${extension(track, target.profile.format)}`;
+      const output = path.join(pack, name);
+      await writeMedia(track, output, tools, {
+        profile: target.profile,
+        signal,
+      });
+      const verified = await inspect(output, tools, signal);
+      files.push({
+        name,
+        title,
+        codec: verified.codec,
+        hash: verified.hash,
+        bytes: verified.bytes,
+      });
+      this.updateJob(job.id, {
+        progress: (index + 1) / 3,
+        message: `Generated synthetic tone ${index + 1} of 2`,
+      });
+    }
+    const order = [files[0], files[1], files[0]];
+    const playlist = [
+      "#EXTM3U",
+      ...order.flatMap((file) => [`#EXTINF:2,${file.title}`, file.name]),
+    ];
+    await writeFile(
+      path.join(pack, "playlist.m3u8"),
+      playlist.join("\n") + "\n",
+      "utf8",
+    );
+    if (target.profile.legacyPlaylist)
+      await writeFile(
+        path.join(pack, "playlist.m3u"),
+        playlist.join("\r\n") + "\r\n",
+        "utf8",
+      );
+    const result = {
+      synthetic: true,
+      hardwareVerified: false,
+      targetId: target.id,
+      profileRevision: target.profile.revision,
+      profile: target.profile,
+      model: target.profile.model,
+      firmware: target.profile.firmware,
+      os: process.platform,
+      files,
+      playlist: "playlist.m3u8",
+      order: order.map((file) => file.name),
+      warning:
+        "Synthetic audio only. Check tags, artwork, playback, seeking and A/B/A order on your player. Preparing this folder does not verify a transfer or hardware compatibility.",
+    };
+    await writeFile(
+      path.join(pack, "manifest.json"),
+      JSON.stringify({ schema: 1, batchId: job.id, ...result }, null, 2),
+    );
+    const names = await readdir(pack);
+    let bytes = 0;
+    for (const name of names) bytes += (await stat(path.join(pack, name))).size;
+    if (target.budget !== null && bytes > target.budget)
+      throw new Error("Synthetic test pack exceeds the target budget");
+    const free = await statfs(targetRoot);
+    if (bytes + 16 * 1024 * 1024 > Number(free.bavail) * Number(free.bsize))
+      throw new Error(
+        "Destination has insufficient free space for the synthetic test pack",
+      );
+    const final = await confined(targetRoot, `compatibility-test-${job.id}`);
+    const temporary = await confined(
+      targetRoot,
+      `compatibility-test-${job.id}.partial`,
+    );
+    const verifyVolume = async () => {
+      const marker = await confined(targetRoot, ".tunevault-volume-id");
+      if (
+        (await stat(marker)).size !== 36 ||
+        (await readFile(marker, "utf8")) !== target.volumeIdentity
+      )
+        throw new Error(
+          "Destination identity changed while preparing the synthetic test pack",
+        );
+    };
+    await verifyVolume();
+    await mkdir(temporary);
+    try {
+      for (const name of names) {
+        signal.throwIfAborted();
+        const destination = await confined(temporary, name);
+        await copyFile(path.join(pack, name), destination);
+        if (
+          (await hashFile(destination)) !==
+          (await hashFile(path.join(pack, name)))
+        )
+          throw new Error("Synthetic test pack copy failed hash verification");
+      }
+      signal.throwIfAborted();
+      await verifyVolume();
+      await rename(temporary, final);
+      for (const file of files)
+        if ((await hashFile(await confined(final, file.name))) !== file.hash)
+          throw new Error("Synthetic test audio changed after copy");
+      const current = this.get<Job>("jobs", job.id);
+      this.updateJob(job.id, {
+        payload: {
+          ...current.payload,
+          resultFolder: final,
+          path: final,
+          bytes,
+          result: { ...result, bytes },
+        },
+      });
+    } finally {
+      await rm(temporary, { recursive: true, force: true }).catch(() => {});
     }
   }
   private async splitJob(job: Job, signal: AbortSignal) {
@@ -2415,11 +2736,8 @@ function referenceKey(ref: Reference): string {
     .digest("hex");
 }
 function message(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error))
-    .replace(/https?:\/\/\S+/g, "[provider URL]")
-    .replace(
-      /((?:cookie|authorization|token|password)\s*[:=]\s*)\S+/gi,
-      "$1[redacted]",
-    )
-    .slice(0, 2000);
+  return redact(error instanceof Error ? error.message : String(error)).slice(
+    0,
+    2000,
+  );
 }

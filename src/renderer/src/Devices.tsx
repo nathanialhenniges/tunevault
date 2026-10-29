@@ -2,6 +2,7 @@ import { useState } from "react";
 import type {
   ExportPlan,
   Format,
+  Job,
   Receipt,
   Snapshot,
   Target,
@@ -276,7 +277,7 @@ export default function Devices({
               </>
             )}
             {tab === "compatibility" && (
-              <Compatibility target={target} run={run} />
+              <Compatibility key={target.id} target={target} jobs={snapshot.jobs} run={run} />
             )}
           </article>
         </div>
@@ -337,17 +338,70 @@ function ConfirmTransfer({
     </>
   );
 }
-function Compatibility({ target, run }: { target: Target; run: Run }) {
+function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run: Run }) {
   const [model, setModel] = useState(target.profile.model),
     [firmware, setFirmware] = useState(target.profile.firmware),
     [format, setFormat] = useState<Format>(target.profile.format),
-    [legacy, setLegacy] = useState(target.profile.legacyPlaylist);
+    [legacy, setLegacy] = useState(target.profile.legacyPlaylist),
+    [queuedTest, setQueuedTest] = useState<Job | null>(null),
+    [testBusy, setTestBusy] = useState(false),
+    [testError, setTestError] = useState("");
+  const testJob = jobs.find((job) => job.id === queuedTest?.id) ||
+    jobs.filter((job) => job.payload.compatibilityTest === true && job.payload.targetId === target.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || queuedTest;
+  const testActive = testJob && ["queued", "running"].includes(testJob.status);
   return (
     <>
       <p className="muted">
         A baseline profile is a starting point. Hardware playback, non-ASCII
         tags, seeking, artwork and playlist ordering need a real-device check.
       </p>
+      <section aria-labelledby="synthetic-test-title">
+        <h3 id="synthetic-test-title">Small compatibility test</h3>
+        <p className="small muted">
+          Prepare generated tones, artwork and playlist-order cases in the
+          target folder. These are synthetic test files, not music from your
+          library. File preparation does not prove playback on a player.
+        </p>
+        <button
+          disabled={testBusy || !!testActive}
+          onClick={async () => {
+            setTestBusy(true);
+            setTestError("");
+            try {
+              setQueuedTest(await run("targets.testPack", { targetId: target.id }));
+            } catch (error) {
+              setTestError(message(error));
+            } finally {
+              setTestBusy(false);
+            }
+          }}
+        >
+          Prepare synthetic test pack…
+        </button>
+        {testJob && (
+          <div className="result-box">
+            <p role="status">
+              Synthetic compatibility test · {testJob.status}
+            </p>
+            <p className={testJob.status === "failed" ? "warning" : "muted"}>
+              {testJob.message || "Queued; test files are not ready yet."}
+            </p>
+            {testJob.status === "completed" && (
+              <button onClick={() => run("reveal", { targetId: target.id })}>
+                Reveal target folder
+              </button>
+            )}
+          </div>
+        )}
+        {testError && <p className="inline-error" role="alert">{testError}</p>}
+        <p className="small muted">
+          Transfer the pack using this target's normal method. Only after
+          checking the physical player, record its model, firmware, artwork,
+          playback, seeking and playlist-order results. This action never marks
+          compatibility User-tested automatically.
+        </p>
+      </section>
       <div className="form-grid">
         <label className="field">
           Model

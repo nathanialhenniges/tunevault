@@ -1681,7 +1681,8 @@ html[data-native-glass="true"] .app-shell {
   background: transparent;
 }
 html[data-native-glass="true"] .sidebar {
-  background: color-mix(in srgb, var(--sidebar) 64%, transparent);
+  --muted: var(--text);
+  background: color-mix(in srgb, var(--sidebar) 70%, transparent);
 }
 html[data-native-glass="true"] .main-content {
   background: var(--bg);

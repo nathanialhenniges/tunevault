@@ -16,6 +16,14 @@ export default function Settings({
   setDemo: (v: boolean) => void;
 }) {
   const [info, setInfo] = useState<any>(null),
+    [toolDiagnostics, setToolDiagnostics] = useState<any>(null),
+    [supportReport, setSupportReport] = useState<{
+      token: string;
+      text: string;
+    } | null>(null),
+    [reportBusy, setReportBusy] = useState(false),
+    [reportError, setReportError] = useState(""),
+    [reportSaved, setReportSaved] = useState(false),
     [update, setUpdate] = useState<any>(null),
     [includeMedia, setIncludeMedia] = useState(false),
     [updateBusy, setUpdateBusy] = useState(false),
@@ -213,7 +221,7 @@ export default function Settings({
             Automatically check for app releases
           </label>
           <p className="muted">
-            Checks contact GitHub with your IP and app version. Download and
+            Checks contact GitHub with your IP and release request. Download and
             installation require your choice. Updates pause during active media
             jobs.
           </p>
@@ -361,19 +369,86 @@ export default function Settings({
           <details>
             <summary>Runtime & bundled tools</summary>
             <pre className="diagnostics">
-              {info
-                ? JSON.stringify(info, null, 2)
+              {toolDiagnostics || info
+                ? JSON.stringify(toolDiagnostics || info, null, 2)
                 : "App information unavailable."}
             </pre>
             <button
               onClick={async () => {
                 const diagnostics = await run("diagnostics");
-                setInfo(diagnostics);
+                setToolDiagnostics(diagnostics);
               }}
             >
               Run tool diagnostics
             </button>
           </details>
+        </section>
+        <section>
+          <h2>Support report</h2>
+          <p className="muted">
+            Preview a report limited to library counts, runtime and bundled-tool
+            information. Save only after reviewing the exact text below.
+          </p>
+          <p className="small muted">
+            GitHub Issues are public. Review the report before sharing it, and
+            never post credentials, cookies, private paths or unredacted logs.
+          </p>
+          <div className="button-row">
+            <button
+              disabled={reportBusy}
+              onClick={async () => {
+                setReportBusy(true);
+                setReportError("");
+                setReportSaved(false);
+                try {
+                  setSupportReport(await run("diagnostics.preview"));
+                } catch (error) {
+                  setReportError(message(error));
+                } finally {
+                  setReportBusy(false);
+                }
+              }}
+            >
+              Preview support report
+            </button>
+            {supportReport && (
+              <button
+                disabled={reportBusy}
+                onClick={async () => {
+                  setReportBusy(true);
+                  setReportError("");
+                  setReportSaved(false);
+                  try {
+                    const result = await run("diagnostics.export", {
+                      token: supportReport.token,
+                    });
+                    if (result !== null) setReportSaved(true);
+                  } catch (error) {
+                    setReportError(message(error));
+                  } finally {
+                    setReportBusy(false);
+                  }
+                }}
+              >
+                Save reviewed report…
+              </button>
+            )}
+          </div>
+          {supportReport && (
+            <pre
+              className="diagnostics"
+              aria-label="Support report preview"
+              tabIndex={0}
+            >
+              {supportReport.text}
+            </pre>
+          )}
+          {reportSaved && <p role="status">Reviewed report saved.</p>}
+          {reportError && (
+            <p className="inline-error" role="alert">
+              {reportError}
+            </p>
+          )}
         </section>
         <section>
           <h2>Design fixtures</h2>

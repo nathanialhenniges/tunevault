@@ -1,3 +1,4 @@
+import { rmSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -116,6 +117,13 @@ export class Credentials {
       this.session = null;
     }
     await rm(join(this.dataDir, "credential-session.json"), { force: true });
+  }
+  clearSessionSync() {
+    if (this.session) {
+      rmSync(this.session, { recursive: true, force: true });
+      this.session = null;
+    }
+    rmSync(join(this.dataDir, "credential-session.json"), { force: true });
   }
   async disconnect() {
     await this.clearSession();

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { launch, choose } from "./launch";
+import { launch, choose, close } from "./launch";
 import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -150,7 +150,7 @@ test("installed data survives the native upgrade", async () => {
       });
     }
   } finally {
-    await app.close();
+    await close(app);
     await rm(root, { recursive: true, force: true });
   }
 });

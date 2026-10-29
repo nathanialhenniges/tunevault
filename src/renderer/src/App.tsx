@@ -158,6 +158,8 @@ export default function App() {
             "app.info",
             "diagnostics",
             "credentials.status",
+            "diagnostics.preview",
+            "diagnostics.export",
             "updates.check",
             "updates.download",
             "updates.install",
@@ -423,7 +425,9 @@ export default function App() {
                     placeholder="Search title, artist or album"
                     aria-label="Search library"
                   />
-                  <kbd>⌘ F</kbd>
+                  <kbd>
+                    {window.tunevault.platform === "darwin" ? "⌘ F" : "Ctrl F"}
+                  </kbd>
                 </label>
                 <select
                   aria-label="Filter by artist"
@@ -601,7 +605,9 @@ export default function App() {
                       </span>
                       <div className="job-main">
                         <strong>
-                          {job.kind[0].toUpperCase() + job.kind.slice(1)}{" "}
+                          {job.payload.compatibilityTest === true
+                            ? "Synthetic compatibility test"
+                            : job.kind[0].toUpperCase() + job.kind.slice(1)}{" "}
                           <span
                             className={
                               job.status === "failed" ? "warning" : "muted"

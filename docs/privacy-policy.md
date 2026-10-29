@@ -17,12 +17,13 @@ cloud music sync or automatic support uploads. Online operations contact the
 service needed for the requested action; those services receive your IP
 address, request time and normal request information:
 
-| Operation                         | Information sent                                                 |
-| --------------------------------- | ---------------------------------------------------------------- |
-| YouTube lookup/search/acquisition | Requested source identifiers, URLs and search terms              |
-| MusicBrainz suggestions           | Requested recording, artist or release search terms              |
-| GitHub update checks/downloads    | Release and artifact requests revealing version/platform choices |
-| Open external link                | Browser request under your browser settings                      |
+| Operation                                    | Information sent                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------- |
+| YouTube lookup/search/acquisition            | Requested source identifiers, URLs and search terms              |
+| Cover Art Archive / Internet Archive artwork | Requested release/artwork identifiers and request headers        |
+| MusicBrainz suggestions                      | Requested recording, artist or release search terms              |
+| GitHub update checks/downloads               | Release and artifact requests revealing version/platform choices |
+| Open external link                           | Browser request under your browser settings                      |
 
 Spotify/Apple direct connectors and automatic browser-cookie collection are not enabled.
 Offline reference-file import does not send those lists to their providers.
@@ -44,6 +45,11 @@ Records, media, revision files, exports and backups persist until you remove
 them. Uninstall retains user data. Removing an app or local record does not
 remove copies from devices, backups or source services. Backups contain
 private paths and metadata; protect them like your library.
+
+Support reports are opt-in: preview their exact counts/runtime/tool versions
+inside the app before saving a file. They exclude library names, media, paths,
+source URLs and credentials. The app keeps no persistent support log and never
+uploads a report automatically. Review any file yourself before sharing.
 
 Support is voluntary through
 [TuneVault GitHub Issues](https://github.com/nathanialhenniges/tunevault/issues).

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { launch } from "./launch";
+import { launch, close } from "./launch";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { writeFile, mkdir, rm } from "node:fs/promises";
@@ -12,7 +12,7 @@ test.skip(
 test("10k indexed tracks, narrow keyboard and zoom rendering", async () => {
   const first = await launch();
   await first.app.firstWindow();
-  await first.app.close();
+  await close(first.app);
   const db = new DatabaseSync(join(first.dataDir, "library", "library.sqlite"));
   const insert = db.prepare("INSERT INTO tracks(id,data) VALUES(?,?)");
   const metadata: Metadata = {
@@ -119,7 +119,10 @@ test("10k indexed tracks, narrow keyboard and zoom rendering", async () => {
     const png = await second.app.evaluate(async ({ BrowserWindow }) =>
       Array.from(
         (
-          await BrowserWindow.getAllWindows()[0].webContents.capturePage()
+          await BrowserWindow.getAllWindows()[0].webContents.capturePage(
+            undefined,
+            { stayHidden: true, stayAwake: true },
+          )
         ).toPNG(),
       ),
     );
@@ -147,7 +150,7 @@ test("10k indexed tracks, narrow keyboard and zoom rendering", async () => {
       ),
     );
   } finally {
-    await second.app.close();
+    await close(second.app);
     await rm(first.root, { recursive: true, force: true });
     await rm(second.root, { recursive: true, force: true });
   }

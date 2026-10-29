@@ -99,3 +99,16 @@ export function youtubeUrl(value: unknown): string {
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+export function redact(value: string): string {
+  return value
+    .replace(
+      /"?(?:authorization|cookie|set-cookie)"?\s*[:=]\s*[^\r\n]*/gi,
+      "[credential redacted]",
+    )
+    .replace(
+      /(["']?(?:access[_-]?token|refresh[_-]?token|token|password|api[_-]?key)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}]+)/gi,
+      "$1[redacted]",
+    )
+    .replace(/https?:\/\/\S+/g, "[URL]");
+}

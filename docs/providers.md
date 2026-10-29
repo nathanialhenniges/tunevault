@@ -27,3 +27,16 @@ file, choose an exact authorized source or skip uncertain occurrences. A
 recording lookup suggests metadata, which is explicitly reviewed before apply.
 No lookup failure removes saved audio. MusicBrainz requests use a descriptive
 User-Agent, rate limiting and cache.
+
+## Provider access spike (2026-10-29)
+
+Official Spotify Web API and Apple Music catalog playlist requests without
+application credentials both returned HTTP 401. No private library, account
+token or audio was accessed. Spotify's current
+[authorization guidance](https://developer.spotify.com/documentation/web-api/concepts/authorization)
+and [developer policy](https://developer.spotify.com/policy), and Apple's
+[developer-token requirements](https://developer.apple.com/documentation/applemusicapi/generating-developer-tokens)
+must be satisfied by a permitted connector before enabling direct reads. A
+ChatGPT catalog-search connector does not supply a redistributable developer
+credential or prove that complete ordered playlist retrieval is available.
+No client secret or Apple private signing key is shipped in TuneVault.

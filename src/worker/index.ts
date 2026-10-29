@@ -13,6 +13,7 @@ port.on("message", async ({ data }: { data: any }) => {
       });
     } else if (action === "__cookies") {
       service.setCookieFile(input?.path ?? null);
+      service.resumeQueued();
       port.postMessage({ id, result: true });
     } else {
       if (!service) throw new Error("Library is not ready");

@@ -7,9 +7,11 @@ import {
   writeFile,
   stat,
   copyFile,
+  link,
 } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import sharp from "sharp";
 import { verifyTools, type ToolPaths } from "../../src/update/tools";
 import { run, inspect, writeMedia, artwork } from "../../src/core/media";
@@ -24,7 +26,7 @@ let tools: ToolPaths;
 const cleanups: (() => Promise<void>)[] = [];
 beforeAll(async () => {
   tools = await verifyTools(toolsDir);
-}, 60000);
+}, 180000);
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const clean of cleanups.splice(0).reverse()) await clean();
@@ -84,6 +86,46 @@ async function complete(service: LibraryService, job: Job): Promise<Job> {
   throw new Error("Job did not complete");
 }
 describe("actual bundled media processing", () => {
+  it("resumes durable queued imports after startup while interrupted work stays retryable", async () => {
+    const { root, service } = await fixture();
+    const file = await audio(root);
+    service.close();
+    const database = new DatabaseSync(
+      path.join(root, "data", "library.sqlite"),
+    );
+    const queued: Job = {
+      id: "queued-restart",
+      kind: "import",
+      status: "queued",
+      progress: 0,
+      message: "Waiting",
+      payload: { paths: [file] },
+      attempts: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    for (const job of [
+      queued,
+      { ...queued, id: "interrupted-restart", status: "running" },
+    ])
+      database
+        .prepare("INSERT INTO jobs(id,data) VALUES(?,?)")
+        .run(job.id, JSON.stringify(job));
+    database.close();
+    const restarted = new LibraryService({
+      dataDir: path.join(root, "data"),
+      toolsDir,
+    });
+    cleanups.push(async () => restarted.close());
+    expect(
+      (await restarted.snapshot()).jobs.find(
+        (job) => job.id === "interrupted-restart",
+      )?.status,
+    ).toBe("interrupted");
+    restarted.resumeQueued();
+    expect((await complete(restarted, queued)).status).toBe("completed");
+    expect((await restarted.snapshot()).tracks).toHaveLength(1);
+  }, 120000);
   it.each([
     ["mp3", "libmp3lame", "mp3"],
     ["m4a", "aac", "aac"],
@@ -123,7 +165,7 @@ describe("actual bundled media processing", () => {
           genre: "Electronic",
           composer: "Test Composer",
           comment: "Owned synthetic audio",
-          date: "2026",
+          date: "2026-10-29",
           discNumber: "1",
           discTotal: "2",
           isrc: "USABC2600001",
@@ -133,6 +175,12 @@ describe("actual bundled media processing", () => {
       const dest = path.join(root, `tagged.${ext}`);
       await writeMedia(track, dest, tools);
       const result = await inspect(dest, tools);
+      if (ext === "mp3") {
+        const bytes = await readFile(dest);
+        expect(bytes.subarray(0, 3).toString()).toBe("ID3");
+        expect(bytes[3]).toBe(3);
+        expect(bytes.subarray(-128, -125).toString()).not.toBe("TAG");
+      }
       expect(result.codec).toBe(codec);
       expect(result.metadata.title).toBe("Edited 孤狼");
       expect(result.metadata.trackNumber).toBe("2");
@@ -164,6 +212,14 @@ describe("actual bundled media processing", () => {
       id: track.id,
       changes: { title: "Cannot overwrite locked" },
     });
+    expect((await service.snapshot()).tracks[0].metadata.title).toBe("Changed");
+    const preview = (await service.dispatch("import.preview", {
+      paths: [file],
+    })) as any[];
+    expect(preview[0].duplicate).toBe(true);
+    job = (await service.dispatch("import.start", { paths: [file] })) as Job;
+    expect((await complete(service, job)).status).toBe("completed");
+    expect((await service.snapshot()).tracks).toHaveLength(1);
     expect((await service.snapshot()).tracks[0].metadata.title).toBe("Changed");
     await service.dispatch("tracks.undo", { ids: [track.id] });
     await service.dispatch("tracks.undo", { ids: [track.id] });
@@ -469,7 +525,14 @@ it("retains per-occurrence failures and retries only failed audio sources", asyn
   const first = await complete(service, queued);
   expect(first.status, first.message).toBe("failed");
   let snapshot = await service.snapshot();
-  expect(snapshot.tracks).toHaveLength(2);
+  expect(
+    snapshot.tracks,
+    JSON.stringify({
+      message: first.message,
+      failures: first.payload.failures,
+      playlist: snapshot.playlists[0],
+    }),
+  ).toHaveLength(2);
   expect(snapshot.playlists[0].entries.map((e) => Boolean(e.trackId))).toEqual([
     true,
     false,
@@ -517,6 +580,11 @@ it("batch lock additions preserve each track's existing locks", async () => {
     changes: {},
     locks: ["title"],
   });
+  const beforeUndo = (await service.snapshot()).tracks[0];
+  await expect(
+    service.dispatch("tracks.undo", { ids: tracks.map((t) => t.id) }),
+  ).rejects.toThrow("No saved metadata revision");
+  expect((await service.snapshot()).tracks[0]).toEqual(beforeUndo);
   await service.dispatch("tracks.edit", {
     ids: [tracks[1].id],
     changes: {},
@@ -530,4 +598,74 @@ it("batch lock additions preserve each track's existing locks", async () => {
   const edited = (await service.snapshot()).tracks;
   expect(edited[0].locks).toEqual(["title", "genre"]);
   expect(edited[1].locks).toEqual(["artist", "genre"]);
+});
+
+it("creates reviewed mix segments with linked ranges while preserving the master", async () => {
+  const { root, service } = await fixture();
+  const source = await audio(root);
+  const importJob = (await service.dispatch("import.start", {
+    paths: [source],
+  })) as Job;
+  const imported = await complete(service, importJob);
+  expect(imported.status, imported.message).toBe("completed");
+  const master = (await service.snapshot()).tracks[0];
+  const original = await readFile(master.path);
+  const job = (await service.dispatch("mixes.split", {
+    id: master.id,
+    chapters: [
+      { start: 0, title: "First section" },
+      { start: 0.75, title: "Second section" },
+    ],
+  })) as Job;
+  const result = await complete(service, job);
+  expect(result.status, result.message).toBe("completed");
+  const tracks = (await service.snapshot()).tracks;
+  expect(tracks).toHaveLength(3);
+  expect(await readFile(master.path)).toEqual(original);
+  const children = tracks.filter((track) => track.parentId === master.id);
+  expect(children.map((track) => track.metadata.title)).toEqual([
+    "First section",
+    "Second section",
+  ]);
+  expect(children.map((track) => track.range)).toEqual([
+    [0, 0.75],
+    [0.75, master.duration],
+  ]);
+  expect(
+    children.every(
+      (track) => track.duration > 0 && track.duration < master.duration,
+    ),
+  ).toBe(true);
+});
+
+it("cached tool diagnostics still reject an altered manifest version", async () => {
+  const { root } = await fixture();
+  const directory = path.join(root, "tools");
+  await mkdir(directory);
+  const manifest = JSON.parse(
+    await readFile(path.join(toolsDir, "manifest.json"), "utf8"),
+  );
+  for (const entry of manifest.entries)
+    await link(
+      path.join(toolsDir, entry.file),
+      path.join(directory, entry.file),
+    );
+  await writeFile(
+    path.join(directory, "manifest.json"),
+    JSON.stringify(manifest),
+  );
+  await verifyTools(directory);
+  manifest.entries.find((entry: any) => entry.name === "ffmpeg").version =
+    "not-the-verified-version";
+  await writeFile(
+    path.join(directory, "manifest.json"),
+    JSON.stringify(manifest),
+  );
+  await expect(verifyTools(directory)).rejects.toThrow("version mismatch");
+  manifest.entries.find((entry: any) => entry.name === "ffmpeg").version = "";
+  await writeFile(
+    path.join(directory, "manifest.json"),
+    JSON.stringify(manifest),
+  );
+  await expect(verifyTools(directory)).rejects.toThrow("Missing or invalid");
 });
