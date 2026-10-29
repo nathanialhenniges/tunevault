@@ -1,0 +1,48 @@
+import { LibraryService } from "../core/library";
+const port = process.parentPort;
+if (!port) throw new Error("Library must run in a utility process");
+let service: LibraryService;
+port.on("message", async ({ data }: { data: any }) => {
+  const { id, action, input } = data;
+  try {
+    if (action === "__init") {
+      service = new LibraryService(input);
+      port.postMessage({
+        id,
+        result: { node: process.versions.node, sqlite: true },
+      });
+    } else if (action === "__cookies") {
+      service.setCookieFile(input?.path ?? null);
+      port.postMessage({ id, result: true });
+    } else {
+      if (!service) throw new Error("Library is not ready");
+      const result = await service.dispatch(action, input);
+      port.postMessage({ id, result });
+      if (
+        ![
+          "snapshot",
+          "artwork.get",
+          "import.preview",
+          "export.preview",
+          "source.preview",
+          "source.search",
+          "lookup.search",
+          "mixes.parse",
+          "diagnostics",
+          "playlists.refreshPreview",
+        ].includes(action)
+      )
+        port.postMessage({ changed: true });
+    }
+  } catch (error) {
+    port.postMessage({
+      id,
+      error: error instanceof Error ? error.message : "Operation failed",
+    });
+  }
+});
+
+process.on("SIGTERM", () => {
+  service?.close();
+  setTimeout(() => process.exit(0), 300);
+});

@@ -1,0 +1,21 @@
+{
+  "fill-specializations": [
+    { "value": { "solid": "extended-srgb:0.84000,0.88000,0.93000,1.00000" } },
+    { "appearance": "dark", "value": { "solid": "extended-srgb:0.10500,0.12500,0.16000,1.00000" } }
+  ],
+  "groups": [
+    {
+      "name": "TuneVault wolf",
+      "layers": [
+        {
+          "image-name": "wolf-concept.png",
+          "name": "Generated wolf concept - original colors",
+          "position": { "scale": 0.68, "translation-in-points": [0, 0] }
+        }
+      ],
+      "shadow": { "kind": "neutral", "opacity": 0.35 },
+      "translucency": { "enabled": true, "value": 0.15 }
+    }
+  ],
+  "supported-platforms": { "squares": "shared" }
+}

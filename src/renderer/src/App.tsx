@@ -1,0 +1,769 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Snapshot, Track } from "../../shared/types";
+import Library from "./Library";
+import Inspector, { BatchEditor } from "./Inspector";
+import AddDialog from "./AddDialog";
+import Devices, { ExportDialog, TargetSetup } from "./Devices";
+import Playlists from "./Playlists";
+import Settings from "./Settings";
+import { demoTracks } from "./fixtures";
+import { Empty, Icon, message, Modal, OperationErrorContext } from "./ui";
+import logo from "./assets/branding/tunevault-wolf-concept.png";
+
+const empty: Snapshot = {
+  tracks: [],
+  library: [],
+  playlists: [],
+  targets: [],
+  jobs: [],
+  receipts: [],
+  settings: {
+    vault: "",
+    appearance: window.tunevault.bootAppearance?.appearance || "system",
+    accent: window.tunevault.bootAppearance?.accent || "blue",
+    autoUpdates: true,
+    onlineAcknowledged: false,
+    selection: [],
+    view: "tracks",
+    filter: "all",
+  },
+};
+const views = [
+  ["library", "Library"],
+  ["playlists", "Playlists"],
+  ["devices", "Devices & exports"],
+  ["activity", "Activity"],
+] as const;
+const filters = [
+  ["all", "All tracks"],
+  ["favorites", "Favorites"],
+  ["review", "Needs review"],
+  ["artwork", "Missing artwork"],
+  ["missing", "Missing file"],
+  ["ready", "Ready for target"],
+  ["changed", "Changed since transfer"],
+];
+
+export default function App() {
+  const [snapshot, setSnapshot] = useState<Snapshot>(empty),
+    [view, setView] = useState("library"),
+    [search, setSearch] = useState(""),
+    [filter, setFilter] = useState("all"),
+    [trackView, setTrackView] = useState<"tracks" | "albums">("tracks"),
+    [selected, setSelected] = useState<string[]>([]),
+    [inspected, setInspected] = useState<string | null>(null),
+    [targetId, setTargetId] = useState(""),
+    [modal, setModal] = useState<
+      "add" | "target" | "export" | "batch" | "add-playlist" | null
+    >(null),
+    [exportPlaylist, setExportPlaylist] = useState<string | undefined>(),
+    [error, setError] = useState(""),
+    [status, setStatus] = useState("Opening local library…"),
+    [demo, setDemo] = useState(false),
+    [sort, setSort] = useState("title"),
+    [artist, setArtist] = useState(""),
+    [legal, setLegal] = useState<{ title: string; text: string } | null>(null),
+    [playlistChoice, setPlaylistChoice] = useState(""),
+    [loading, setLoading] = useState(true);
+  const searchRef = useRef<HTMLInputElement>(null),
+    initialized = useRef(false);
+  const refresh = useCallback(async () => {
+    const value = await window.tunevault.invoke("snapshot");
+    setSnapshot(value);
+    if (!initialized.current) {
+      setSelected(value.settings.selection || []);
+      setTrackView(value.settings.view || "tracks");
+      setFilter(value.settings.filter || "all");
+      initialized.current = true;
+    }
+    setLoading(false);
+    setStatus("Library saved locally");
+  }, []);
+  useEffect(() => {
+    refresh().catch((e) => {
+      setError(message(e));
+      setLoading(false);
+    });
+    const unsubscribe = window.tunevault.onChanged(() =>
+      refresh().catch((e) => setError(message(e))),
+    );
+    return unsubscribe;
+  }, [refresh]);
+  useEffect(() => {
+    if (
+      !snapshot.jobs.some(
+        (j) => j.status === "running" || j.status === "queued",
+      )
+    )
+      return;
+    const timer = setInterval(() => refresh().catch(() => {}), 1000);
+    return () => clearInterval(timer);
+  }, [snapshot.jobs, refresh]);
+  useEffect(
+    () =>
+      window.tunevault.onMenu?.((action) => {
+        if (action === "import") setModal("add");
+        if (action === "settings") setView("settings");
+      }),
+    [],
+  );
+  const [systemDark, setSystemDark] = useState(
+    window.tunevault.bootAppearance?.systemDark ??
+      matchMedia("(prefers-color-scheme: dark)").matches,
+  );
+  useEffect(() => window.tunevault.onSystemThemeChanged(setSystemDark), []);
+  useEffect(() => {
+    document.documentElement.dataset.appearance =
+      snapshot.settings.appearance === "system"
+        ? systemDark
+          ? "dark"
+          : "light"
+        : snapshot.settings.appearance;
+    document.documentElement.dataset.accent = snapshot.settings.accent;
+  }, [snapshot.settings.appearance, snapshot.settings.accent, systemDark]);
+  const run = useCallback(
+    async (action: string, input?: unknown): Promise<any> => {
+      setError("");
+      try {
+        if (action === "openLegal") {
+          const kind = (input as { document: string }).document;
+          const names: Record<string, string> = {
+            terms: "terms-of-use",
+            privacy: "privacy-policy",
+            "third-party": "third-party-notices",
+            install: "install-update",
+          };
+          const result = await window.tunevault.invoke("legal.read", {
+            name: names[kind] || kind,
+          });
+          setLegal({
+            title:
+              {
+                terms: "Terms of use",
+                privacy: "Privacy policy",
+                "third-party": "Third-party notices",
+                install: "Install & update help",
+              }[kind] || kind,
+            text:
+              typeof result === "string"
+                ? result
+                : result.text || result.content || "",
+          });
+          return;
+        }
+        const result = await window.tunevault.invoke(action, input);
+        if (
+          !action.startsWith("choose") &&
+          ![
+            "app.info",
+            "diagnostics",
+            "credentials.status",
+            "updates.check",
+            "updates.download",
+            "updates.install",
+            "openExternal",
+            "reveal",
+            "source.search",
+            "lookup.search",
+            "mixes.parse",
+            "import.preview",
+            "source.preview",
+            "export.preview",
+            "playlists.refreshPreview",
+          ].includes(action)
+        ) {
+          await refresh();
+          setStatus("Changes saved locally");
+        }
+        return result;
+      } catch (e) {
+        setError(message(e));
+        throw e;
+      }
+    },
+    [refresh],
+  );
+  function chooseSelection(ids: string[]) {
+    setSelected(ids);
+    if (!demo) void run("settings.update", { selection: ids }).catch(() => {});
+  }
+  function chooseFilter(value: string) {
+    setFilter(value);
+    if (!demo) void run("settings.update", { filter: value }).catch(() => {});
+  }
+  function chooseTrackView(value: "tracks" | "albums") {
+    setTrackView(value);
+    if (!demo) void run("settings.update", { view: value }).catch(() => {});
+  }
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector("dialog[open]"))
+        setInspected(null);
+      if (e.metaKey || e.ctrlKey) {
+        if (
+          e.key.toLowerCase() === "f" &&
+          !document.querySelector("dialog[open]")
+        ) {
+          e.preventDefault();
+          setView("library");
+          searchRef.current?.focus();
+        }
+        if (e.key.toLowerCase() === "o") {
+          e.preventDefault();
+          setModal("add");
+        }
+        if (
+          e.key.toLowerCase() === "i" &&
+          !document.querySelector("dialog[open]")
+        ) {
+          e.preventDefault();
+          if (selected[0]) setInspected(selected[0]);
+        }
+      }
+    };
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, [selected]);
+  const tracks = demo ? demoTracks : snapshot.tracks;
+  const current = tracks.find((t) => t.id === inspected);
+  const target =
+    snapshot.targets.find((t) => t.id === targetId) || snapshot.targets[0];
+  const activeJobs = snapshot.jobs.filter(
+    (j) => j.status === "queued" || j.status === "running",
+  );
+  function prepare(playlistId?: string) {
+    if (demo) {
+      setError(
+        "Design fixtures contain no audio. Switch to your real library to prepare files.",
+      );
+      return;
+    }
+    setExportPlaylist(playlistId);
+    setModal("export");
+  }
+  async function drop(e: React.DragEvent) {
+    e.preventDefault();
+    if (demo) return;
+    const paths = await window.tunevault.droppedPaths(
+      Array.from(e.dataTransfer.files),
+    );
+    if (!paths.length) return;
+    try {
+      if (!snapshot.settings.vault) {
+        setError(
+          "Choose your vault in Settings before importing dropped files.",
+        );
+        return;
+      }
+      await run("import.start", { paths });
+      setView("activity");
+    } catch {
+      setStatus("File import failed; see the library error");
+    }
+  }
+  const guardedRun = useCallback(
+    async (action: string, input?: unknown) => {
+      try {
+        return await run(action, input);
+      } catch {
+        return undefined;
+      }
+    },
+    [run],
+  );
+  return (
+    <OperationErrorContext.Provider value={error}>
+      <div
+        className={`app-shell ${current ? "has-inspector" : ""}`}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={drop}
+      >
+        <nav className="sidebar" aria-label="Main navigation">
+          <div className="brand">
+            <img src={logo} alt="" />
+            <span>TuneVault</span>
+          </div>
+          <div className="sidebar-group-label">Collection</div>
+          {views.map(([id, label]) => (
+            <button
+              key={id}
+              aria-label={label}
+              className={`nav-item ${view === id ? "active" : ""}`}
+              aria-current={view === id ? "page" : undefined}
+              onClick={() => setView(id)}
+            >
+              <Icon
+                name={
+                  id === "playlists"
+                    ? "playlist"
+                    : id === "devices"
+                      ? "device"
+                      : id
+                }
+              />
+              <span>{label}</span>
+              {id === "library" && (
+                <small>{tracks.length.toLocaleString()}</small>
+              )}
+              {id === "activity" && activeJobs.length > 0 && (
+                <small>{activeJobs.length}</small>
+              )}
+            </button>
+          ))}
+          <div className="sidebar-group-label saved-label">Saved filters</div>
+          <div className="saved-filters">
+            {filters.slice(1).map(([value, label]) => (
+              <button
+                key={value}
+                className={
+                  view === "library" && filter === value ? "active" : ""
+                }
+                onClick={() => {
+                  setView("library");
+                  chooseFilter(value);
+                }}
+              >
+                <span className="filter-dot" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="sidebar-bottom">
+            <div className="mini-target">
+              <span className="small muted">Export target</span>
+              <strong>{target?.name || "No target configured"}</strong>
+              <span className="small muted">
+                {target
+                  ? target.profile.format.toUpperCase() +
+                    " · " +
+                    target.profile.compatibility
+                  : "Add a player in Devices & exports"}
+              </span>
+            </div>
+            <button
+              aria-label="Settings & About"
+              className={`nav-item ${view === "settings" ? "active" : ""}`}
+              onClick={() => setView("settings")}
+              aria-current={view === "settings" ? "page" : undefined}
+            >
+              <Icon name="settings" />
+              <span>Settings & About</span>
+            </button>
+          </div>
+        </nav>
+        <main className="main-content" id="main-content">
+          {error && (
+            <div className="error-banner" role="alert">
+              <Icon name="warning" size={17} />
+              <span>{error}</span>
+              <button
+                className="icon-button quiet"
+                aria-label="Dismiss error"
+                onClick={() => setError("")}
+              >
+                <Icon name="close" size={15} />
+              </button>
+            </div>
+          )}
+          {demo && (
+            <div className="demo-banner">
+              <span>
+                Design fixtures · fictional artwork · no audio or transfers
+              </span>
+              <button
+                onClick={() => {
+                  setDemo(false);
+                  setInspected(null);
+                  setSelected([]);
+                }}
+              >
+                Return to real library
+              </button>
+            </div>
+          )}
+          {view === "library" && (
+            <>
+              <div className="page-head">
+                <div>
+                  <h1>Library</h1>
+                  <p>
+                    {tracks.length.toLocaleString()} tracks
+                    {tracks.filter(
+                      (t) => !t.metadata.title || !t.metadata.artist,
+                    ).length
+                      ? ` · ${tracks.filter((t) => !t.metadata.title || !t.metadata.artist).length} need tags`
+                      : ""}
+                  </p>
+                </div>
+                <div className="button-row">
+                  <button disabled={demo} onClick={() => setModal("add")}>
+                    <Icon name="plus" size={16} />
+                    Add music…
+                  </button>
+                  <button
+                    className="primary"
+                    onClick={() => prepare()}
+                    disabled={!tracks.length || demo}
+                  >
+                    <Icon name="export" size={16} />
+                    Prepare export…
+                  </button>
+                </div>
+              </div>
+              <div className="library-tools">
+                <label className="search-box">
+                  <Icon name="search" size={16} />
+                  <input
+                    ref={searchRef}
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search title, artist or album"
+                    aria-label="Search library"
+                  />
+                  <kbd>⌘ F</kbd>
+                </label>
+                <select
+                  aria-label="Filter by artist"
+                  value={artist}
+                  onChange={(e) => setArtist(e.target.value)}
+                >
+                  <option value="">All artists</option>
+                  {[
+                    ...new Set(
+                      tracks.map((t) => t.metadata.artist).filter(Boolean),
+                    ),
+                  ]
+                    .sort()
+                    .map((value) => (
+                      <option value={value} key={value}>
+                        {value}
+                      </option>
+                    ))}
+                </select>
+                <select
+                  aria-label="Filter library"
+                  value={filter}
+                  onChange={(e) => chooseFilter(e.target.value)}
+                >
+                  {filters.map(([id, label]) => (
+                    <option key={id} value={id}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="library-subbar">
+                <div className="segmented" aria-label="Library display">
+                  <button
+                    className={trackView === "tracks" ? "selected" : ""}
+                    aria-pressed={trackView === "tracks"}
+                    onClick={() => chooseTrackView("tracks")}
+                  >
+                    <Icon name="playlist" size={15} />
+                    Tracks
+                  </button>
+                  <button
+                    className={trackView === "albums" ? "selected" : ""}
+                    aria-pressed={trackView === "albums"}
+                    onClick={() => chooseTrackView("albums")}
+                  >
+                    <Icon name="albums" size={15} />
+                    Albums
+                  </button>
+                </div>
+                <label className="target-select">
+                  Export target
+                  <select
+                    value={target?.id || ""}
+                    onChange={(e) => setTargetId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      No target
+                    </option>
+                    {snapshot.targets.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {loading ? (
+                <Empty title="Opening your library…">
+                  Reading the local index.
+                </Empty>
+              ) : (
+                <Library
+                  tracks={
+                    artist
+                      ? tracks.filter((t) => t.metadata.artist === artist)
+                      : tracks
+                  }
+                  selected={selected}
+                  setSelected={chooseSelection}
+                  inspect={setInspected}
+                  target={target}
+                  receipts={snapshot.receipts}
+                  playlists={snapshot.playlists}
+                  filter={filter}
+                  search={search}
+                  view={trackView}
+                  sort={sort}
+                  setSort={setSort}
+                  onFavorite={(t: Track) =>
+                    guardedRun("tracks.favorite", {
+                      ids: [t.id],
+                      value: !t.favorite,
+                    })
+                  }
+                />
+              )}
+              <div className="selection-bar">
+                <span>{selected.length} selected</span>
+                <div className="button-row">
+                  <button
+                    className="quiet"
+                    disabled={!selected.length}
+                    onClick={() => setInspected(selected[0])}
+                  >
+                    <Icon name="panel" size={16} />
+                    Show details
+                  </button>
+                  <button
+                    disabled={!selected.length || demo}
+                    onClick={() => setModal("batch")}
+                  >
+                    Edit tags…
+                  </button>
+                  <button
+                    disabled={
+                      !selected.length || demo || !snapshot.playlists.length
+                    }
+                    onClick={() => {
+                      setPlaylistChoice(snapshot.playlists[0]?.id || "");
+                      setModal("add-playlist");
+                    }}
+                  >
+                    Add to playlist…
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {view === "playlists" && (
+            <Playlists
+              snapshot={snapshot}
+              run={run}
+              inspect={setInspected}
+              prepare={prepare}
+            />
+          )}
+          {view === "devices" && (
+            <Devices
+              snapshot={snapshot}
+              targetId={targetId}
+              setTargetId={setTargetId}
+              run={run}
+              openSetup={() => setModal("target")}
+              prepare={() => prepare()}
+            />
+          )}
+          {view === "activity" && (
+            <>
+              <div className="page-head">
+                <div>
+                  <h1>Activity</h1>
+                  <p>Durable jobs, recoverable failures and completed work.</p>
+                </div>
+                <button onClick={() => setModal("add")}>Add music…</button>
+              </div>
+              {!snapshot.jobs.length ? (
+                <Empty icon="activity" title="No jobs yet">
+                  Import files or prepare an export to see its progress here.
+                </Empty>
+              ) : (
+                <div className="activity-list">
+                  {[...snapshot.jobs].reverse().map((job) => (
+                    <article className="job" key={job.id}>
+                      <span className="job-icon">
+                        <Icon
+                          name={
+                            job.kind === "export"
+                              ? "export"
+                              : job.kind === "import"
+                                ? "folder"
+                                : "music"
+                          }
+                        />
+                      </span>
+                      <div className="job-main">
+                        <strong>
+                          {job.kind[0].toUpperCase() + job.kind.slice(1)}{" "}
+                          <span
+                            className={
+                              job.status === "failed" ? "warning" : "muted"
+                            }
+                          >
+                            · {job.status}
+                          </span>
+                        </strong>
+                        <p>{job.message || "Waiting to start"}</p>
+                        {job.status === "running" && (
+                          <progress
+                            max={1}
+                            value={
+                              job.progress > 1
+                                ? job.progress / 100
+                                : job.progress
+                            }
+                            aria-label={`${job.kind} progress`}
+                          />
+                        )}
+                        <span className="small muted">
+                          {new Date(job.createdAt).toLocaleString()} · attempt{" "}
+                          {job.attempts}
+                        </span>
+                      </div>
+                      <div className="button-row">
+                        {["running", "queued"].includes(job.status) && (
+                          <button
+                            onClick={() =>
+                              guardedRun("jobs.cancel", { id: job.id })
+                            }
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        {["failed", "cancelled", "interrupted"].includes(
+                          job.status,
+                        ) && (
+                          <button
+                            onClick={() =>
+                              guardedRun("jobs.retry", { id: job.id })
+                            }
+                          >
+                            Retry
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {view === "settings" && (
+            <Settings
+              settings={snapshot.settings}
+              run={run}
+              demo={demo}
+              setDemo={(value) => {
+                setDemo(value);
+                setSelected([]);
+                setInspected(null);
+                if (value) setView("library");
+              }}
+            />
+          )}
+        </main>
+        {current && (
+          <Inspector
+            key={current.id}
+            track={current}
+            onClose={() => setInspected(null)}
+            run={run}
+            onlineAcknowledged={snapshot.settings.onlineAcknowledged}
+          />
+        )}
+        <footer className="status-bar">
+          <span className="status-message" role="status" aria-live="polite">
+            <i />
+            {activeJobs.length
+              ? `${activeJobs.length} active job${activeJobs.length === 1 ? "" : "s"}`
+              : status}
+          </span>
+          <span className="tabular">
+            {tracks.length.toLocaleString()} tracks · {selected.length} selected
+          </span>
+          <span>Local library</span>
+        </footer>
+        {modal === "add" && (
+          <AddDialog
+            settings={snapshot.settings}
+            run={run}
+            onClose={() => setModal(null)}
+          />
+        )}
+        {modal === "target" && (
+          <TargetSetup run={run} onClose={() => setModal(null)} />
+        )}
+        {modal === "export" && (
+          <ExportDialog
+            snapshot={snapshot}
+            targetId={target?.id || ""}
+            trackIds={
+              selected.length ? selected : snapshot.tracks.map((t) => t.id)
+            }
+            playlistId={exportPlaylist}
+            run={run}
+            onClose={() => setModal(null)}
+          />
+        )}
+        {modal === "batch" && selected.length > 0 && (
+          <BatchEditor
+            tracks={snapshot.tracks.filter((t) => selected.includes(t.id))}
+            run={run}
+            onClose={() => setModal(null)}
+          />
+        )}
+        {modal === "add-playlist" && (
+          <Modal
+            title="Add selected tracks to playlist"
+            onClose={() => setModal(null)}
+            actions={
+              <button
+                className="primary"
+                disabled={!playlistChoice}
+                onClick={async () => {
+                  await run("playlists.add", {
+                    id: playlistChoice,
+                    trackIds: selected,
+                  });
+                  setModal(null);
+                }}
+              >
+                Add {selected.length} occurrences
+              </button>
+            }
+          >
+            <label className="field">
+              Playlist
+              <select
+                value={playlistChoice}
+                onChange={(e) => setPlaylistChoice(e.target.value)}
+              >
+                {snapshot.playlists.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="small muted">
+              Tracks already present are added as new occurrences. Existing
+              order stays intact.
+            </p>
+          </Modal>
+        )}
+        {legal && (
+          <Modal title={legal.title} wide onClose={() => setLegal(null)}>
+            <pre className="legal-text">{legal.text}</pre>
+          </Modal>
+        )}
+      </div>
+    </OperationErrorContext.Provider>
+  );
+}

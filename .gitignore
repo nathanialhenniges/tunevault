@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+artifacts/
+test-results/
+playwright-report/
+.DS_Store
+resources/tools/*/
+!resources/tools/*/manifest.json
+build/icon.iconset/
+build/icon-compiled/

@@ -1,0 +1,64 @@
+{
+  "name": "tunevault",
+  "version": "4.0.0",
+  "description": "Local music archive and portable-player exports",
+  "author": "Nathanial Henniges",
+  "license": "MIT",
+  "private": true,
+  "main": "out/main/index.js",
+  "engines": {
+    "node": ">=24.13.0"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "tools:prepare": "node scripts/prepare-tools.mjs",
+    "tools:verify": "node scripts/verify-tools.mjs",
+    "package:dir": "npm run build && electron-builder --dir --publish never",
+    "package": "npm run build && electron-builder --publish never",
+    "release:check": "node scripts/check-release.mjs",
+    "lint": "eslint src tests",
+    "format": "prettier --write src tests *.ts *.mjs *.json *.yml docs/*.md AGENTS.md CLAUDE.md README.md",
+    "icon:verify": "node scripts/verify-icon.mjs",
+    "package:verify": "node scripts/verify-package.mjs",
+    "test:upgrade": "node scripts/build-upgrade-candidates.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11",
+    "fast-xml-parser": "5.11.2",
+    "music-metadata": "12.3.2",
+    "node-taglib-sharp": "6.0.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "sharp": "0.35.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "electron-vite": "6.0.0",
+    "eslint": "10.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  },
+  "optionalDependencies": {
+    "electron-liquid-glass": "1.1.1"
+  },
+  "overrides": {
+    "node-taglib-sharp": {
+      "uuid": "11.1.1"
+    }
+  }
+}

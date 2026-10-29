@@ -1,0 +1,281 @@
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  rm,
+  symlink,
+  readFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { LibraryService } from "../../src/core/library";
+import { confined, safeName, youtubeUrl } from "../../src/core/safety";
+import {
+  parseChapters,
+  parseDelimited,
+  parseReferences,
+  reconcile,
+} from "../../src/core/references";
+import type { Playlist } from "../../src/shared/types";
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const clean of cleanups.splice(0).reverse()) await clean();
+});
+async function fixture() {
+  const root = await mkdtemp(path.join(tmpdir(), "tunevault-core-"));
+  const dataDir = path.join(root, "data"),
+    vault = path.join(root, "vault");
+  await mkdir(vault);
+  const service = new LibraryService({
+    dataDir,
+    toolsDir: path.join(root, "missing-tools"),
+  });
+  cleanups.push(async () => {
+    service.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  await service.dispatch("settings.update", { vault });
+  return { root, vault, service };
+}
+describe("durable library", () => {
+  it("starts empty and persists independent appearance/accent", async () => {
+    const { root, service } = await fixture();
+    await service.dispatch("settings.update", {
+      appearance: "dark",
+      accent: "orange",
+    });
+    expect((await service.snapshot()).tracks).toEqual([]);
+    const second = new LibraryService({
+      dataDir: path.join(root, "data"),
+      toolsDir: "missing",
+    });
+    expect((await second.snapshot()).settings).toMatchObject({
+      appearance: "dark",
+      accent: "orange",
+    });
+    second.close();
+    await expect(
+      service.dispatch("settings.update", { appearance: "neon" }),
+    ).rejects.toThrow("appearance");
+  });
+  it("preserves repeated reference occurrences and unavailable entries without auto importing paths", async () => {
+    const { service } = await fixture();
+    const playlist = (await service.dispatch("references.import", {
+      name: "Ordered",
+      format: "m3u",
+      text: "#EXTM3U\n#EXTINF:3,A\n../A.mp3\n#EXTINF:4,B\nB.mp3\n#EXTINF:3,A\n../A.mp3\n#EXTINF:0,unavailable\nmissing.mp3\n#EXTINF:5,C\nC.mp3",
+    })) as Playlist;
+    expect(playlist.entries.map((e) => e.reference.title)).toEqual([
+      "A",
+      "B",
+      "A",
+      "unavailable",
+      "C",
+    ]);
+    expect(new Set(playlist.entries.map((e) => e.id)).size).toBe(5);
+    expect(playlist.entries.every((e) => e.trackId === null)).toBe(true);
+    await expect(
+      service.dispatch("playlists.reorder", {
+        id: playlist.id,
+        occurrenceIds: [playlist.entries[0].id],
+      }),
+    ).rejects.toThrow("each occurrence");
+    const order = playlist.entries.map((e) => e.id).reverse();
+    await service.dispatch("playlists.reorder", {
+      id: playlist.id,
+      occurrenceIds: order,
+    });
+    expect(
+      (await service.snapshot()).playlists[0].entries.map((e) => e.id),
+    ).toEqual(order);
+  });
+  it("backs up metadata and rejects a corrupted restore without losing current state", async () => {
+    const { root, service } = await fixture();
+    await service.dispatch("playlists.create", { name: "Keep me" });
+    const result = (await service.dispatch("backup", {
+      path: root,
+      includeMedia: false,
+    })) as any;
+    const bundle = JSON.parse(
+      await readFile(path.join(result.path, "bundle.json"), "utf8"),
+    );
+    bundle.schema = 100;
+    await writeFile(
+      path.join(result.path, "bundle.json"),
+      JSON.stringify(bundle),
+    );
+    await expect(
+      service.dispatch("restore", { path: result.path }),
+    ).rejects.toThrow("schema");
+    expect((await service.snapshot()).playlists[0].name).toBe("Keep me");
+  });
+  it("reports Spotify and Apple credentials capability without fetching or pretending completeness", async () => {
+    const { service } = await fixture();
+    for (const url of [
+      "https://open.spotify.com/playlist/abc",
+      "https://music.apple.com/us/playlist/abc",
+    ])
+      expect(await service.dispatch("source.preview", { url })).toMatchObject({
+        capability: "credentials-required",
+        complete: false,
+        references: [],
+      });
+  });
+  it("separates named targets and advertises MTP folder fallback honestly", async () => {
+    const { service, vault } = await fixture();
+    const a = (await service.dispatch("targets.create", {
+      name: "iPod",
+      transport: "imazing",
+      destination: vault,
+      profile: { format: "aac" },
+    })) as any;
+    const b = (await service.dispatch("targets.create", {
+      name: "Android",
+      transport: "mtp",
+      destination: vault,
+    })) as any;
+    const renamed = (await service.dispatch("targets.update", {
+      id: a.id,
+      name: "Renamed iPod",
+      profile: a.profile,
+    })) as any;
+    expect(renamed.profile.revision).toBe(a.profile.revision);
+    expect(a.id).not.toBe(b.id);
+    expect(
+      await service.dispatch("export.preview", { targetId: b.id }),
+    ).toMatchObject({
+      warning: expect.stringContaining("Direct MTP transfer unavailable"),
+    });
+    await expect(
+      service.dispatch("targets.update", {
+        id: a.id,
+        profile: { format: "flac" },
+      }),
+    ).rejects.toThrow("compatible");
+  });
+});
+describe("safe paths and ordered parsing", () => {
+  it("rejects traversal and symlink escape and sanitizes portable filenames", async () => {
+    const { root, vault } = await fixture();
+    await expect(confined(vault, "../outside")).rejects.toThrow();
+    await symlink(root, path.join(vault, "escape"));
+    await expect(confined(vault, "escape/evil.mp3")).rejects.toThrow("Symlink");
+    expect(safeName("CON.mp3")).toBe("_CON.mp3");
+    expect(safeName("a/b\\c: d. ")).toBe("a_b_c_ d");
+  });
+  it("accepts only canonical safe YouTube URLs", () => {
+    expect(youtubeUrl("https://youtu.be/abcdefghijk?t=1")).toBe(
+      "https://www.youtube.com/watch?v=abcdefghijk",
+    );
+    for (const input of [
+      "http://youtube.com/watch?v=abcdefghijk",
+      "https://youtube.com.evil.test/watch?v=abcdefghijk",
+      "https://127.0.0.1/a",
+      "https://youtube.com:4430/watch?v=abcdefghijk",
+    ])
+      expect(() => youtubeUrl(input)).toThrow();
+  });
+  it("parses quoted and Unicode CSV, preserves version distinctions", () => {
+    expect(parseDelimited('title,artist\n"Live, version","孤狼"', ",")).toEqual(
+      [
+        ["title", "artist"],
+        ["Live, version", "孤狼"],
+      ],
+    );
+    const refs = parseReferences(
+      "title,artist,album,duration\nSong,A,Remix,03:04\nSong,A,Live,03:05",
+      "csv",
+    );
+    expect(refs.map((r) => r.duration)).toEqual([184, 185]);
+    expect(refs[0].album).not.toBe(refs[1].album);
+    expect(() => parseDelimited('"oops', ",")).toThrow("Unclosed");
+  });
+  it("validates hour timestamps, duplicates, ordering and duration bounds", () => {
+    expect(parseChapters("00:00 Intro\n01:02:03 Long set", 4000)).toEqual([
+      { start: 0, title: "Intro" },
+      { start: 3723, title: "Long set" },
+    ]);
+    for (const source of [
+      "00:03 A\n00:02 B",
+      "00:00 A\n00:00 B",
+      "00:99 Bad",
+      "02:00 Out",
+    ])
+      expect(() => parseChapters(source, 60)).toThrow();
+  });
+  it("refreshes occurrence-aware snapshots and keeps manual additions, refusing partial replacement", () => {
+    const refs = ["A", "B", "A", "unavailable", "C"].map((title) => ({
+      title,
+      artist: "",
+      album: "",
+      duration: null,
+      sourceId: title,
+      unavailable: title === "unavailable",
+    }));
+    const playlist: Playlist = {
+      id: "p",
+      name: "P",
+      description: "",
+      revision: 1,
+      sourceUrl: "https://youtube.com",
+      snapshotAt: null,
+      followSourceOrder: true,
+      entries: refs
+        .map((reference, i) => ({
+          id: String(i),
+          reference,
+          trackId: null,
+          manual: false,
+          skipped: false,
+        }))
+        .concat([
+          {
+            id: "manual",
+            reference: {
+              title: "Local",
+              artist: "",
+              album: "",
+              duration: null,
+              sourceId: "Local",
+              unavailable: false,
+            },
+            trackId: null,
+            manual: true,
+            skipped: false,
+          },
+        ]),
+    };
+    const result = reconcile(
+      playlist,
+      [refs[1], refs[0], refs[2], refs[4]],
+      true,
+    );
+    expect(result.entries.map((e) => e.id)).toEqual([
+      "1",
+      "0",
+      "2",
+      "4",
+      "manual",
+    ]);
+    expect(result.removed).toBe(1);
+    expect(() => reconcile(playlist, [], false)).toThrow(
+      "previous complete snapshot",
+    );
+    expect(playlist.entries).toHaveLength(6);
+  });
+});
+
+it("reads normal Apple Music XML without resolving external DTDs and rejects entity injection", () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Tracks</key><dict><key>1</key><dict><key>Name</key><string>A &amp; B</string><key>Artist</key><string>孤狼</string><key>Total Time</key><integer>123000</integer></dict></dict><key>Playlists</key><array><dict><key>Playlist Items</key><array><dict><key>Track ID</key><integer>1</integer></dict><dict><key>Track ID</key><integer>1</integer></dict></array></dict></array></dict></plist>`;
+  expect(parseReferences(xml, "apple-xml")).toMatchObject([
+    { title: "A & B", artist: "孤狼", duration: 123 },
+    { title: "A & B", artist: "孤狼", duration: 123 },
+  ]);
+  expect(() =>
+    parseReferences(
+      '<!DOCTYPE plist [<!ENTITY x SYSTEM "file:///etc/passwd">]><plist/>',
+      "apple-xml",
+    ),
+  ).toThrow("entities");
+});

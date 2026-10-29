@@ -1,0 +1,670 @@
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  shell,
+  Menu,
+  utilityProcess,
+  nativeTheme,
+  nativeImage,
+  protocol,
+  net,
+  safeStorage,
+  clipboard,
+} from "electron";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
+import { release } from "node:os";
+import { UpdateService } from "../update/service";
+import { updateOptions } from "../update/config";
+import { Credentials } from "./credentials";
+import { FileGrants } from "./permissions";
+
+if (process.env.TUNEVAULT_TEST_DATA) {
+  if (!app.isPackaged || process.env.TUNEVAULT_E2E === "1")
+    app.setPath("userData", resolve(process.env.TUNEVAULT_TEST_DATA));
+}
+app.setName("TuneVault");
+app.setAppUserModelId("com.nathanialhenniges.tunevault");
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "tunevault-art",
+    privileges: { secure: true, standard: true, supportFetchAPI: true },
+  },
+]);
+const single = app.requestSingleInstanceLock();
+if (!single) app.quit();
+let window: BrowserWindow | null = null;
+const grants = new FileGrants();
+const pending = new Map<
+  string,
+  {
+    resolve: (v: any) => void;
+    reject: (e: Error) => void;
+    timeout: NodeJS.Timeout;
+  }
+>();
+let worker: Electron.UtilityProcess;
+let expectedUrl: string;
+let credentials: Credentials | null = null;
+let quitting = false;
+const commands = new Set([
+  "snapshot",
+  "settings.update",
+  "import.preview",
+  "import.start",
+  "tracks.edit",
+  "tracks.undo",
+  "tracks.favorite",
+  "tracks.artwork",
+  "tracks.relink",
+  "playlists.create",
+  "playlists.update",
+  "playlists.add",
+  "playlists.reorder",
+  "playlists.remove",
+  "references.import",
+  "references.attach",
+  "references.skip",
+  "source.preview",
+  "source.search",
+  "source.acquire",
+  "playlists.refreshPreview",
+  "playlists.refreshApply",
+  "targets.create",
+  "targets.update",
+  "export.preview",
+  "export.prepare",
+  "export.confirm",
+  "jobs.cancel",
+  "jobs.retry",
+  "mixes.parse",
+  "mixes.split",
+  "description.export",
+  "lookup.search",
+  "lookup.apply",
+  "lookup.artworkPreview",
+  "lookup.artworkApply",
+  "artwork.preview",
+  "backup",
+  "restore",
+  "diagnostics",
+]);
+function command(action: string, input?: unknown): Promise<any> {
+  return new Promise((yes, no) => {
+    const id = randomUUID();
+    const timeout = setTimeout(
+      () => {
+        pending.delete(id);
+        no(
+          new Error("The operation timed out; check Activity before retrying"),
+        );
+      },
+      30 * 60 * 1000,
+    );
+    pending.set(id, { resolve: yes, reject: no, timeout });
+    worker.postMessage({ id, action, input });
+  });
+}
+function validateSender(event: Electron.IpcMainInvokeEvent) {
+  if (
+    !window ||
+    event.sender !== window.webContents ||
+    event.senderFrame !== window.webContents.mainFrame ||
+    event.senderFrame.url !== expectedUrl
+  )
+    throw new Error("Untrusted request");
+}
+async function picker(kind: string): Promise<any> {
+  const folder = [
+    "chooseVault",
+    "chooseTargetFolder",
+    "chooseImportFolder",
+    "chooseBackup",
+    "chooseRestore",
+  ].includes(kind);
+  const result = await dialog.showOpenDialog(window!, {
+    title: folder ? "Choose folder" : "Choose files",
+    properties: folder
+      ? ["openDirectory"]
+      : kind === "chooseImport"
+        ? ["openFile", "multiSelections"]
+        : ["openFile"],
+    ...(kind === "chooseArtwork"
+      ? {
+          filters: [
+            { name: "Artwork", extensions: ["png", "jpg", "jpeg", "webp"] },
+          ],
+        }
+      : {}),
+  });
+  const paths = await Promise.all(
+    result.filePaths.map((path) => grants.grant(path)),
+  );
+  return kind === "chooseImport" ? paths : (paths[0] ?? null);
+}
+async function checkPaths(action: string, input: any) {
+  if (["import.preview", "import.start"].includes(action)) {
+    if (!Array.isArray(input?.paths) || input.paths.length > 10000)
+      throw new Error("Invalid import selection");
+    await Promise.all(input.paths.map((path: unknown) => grants.require(path)));
+  }
+  if (action === "settings.update" && input?.vault !== undefined)
+    await grants.require(input.vault);
+  if (
+    ["targets.create", "targets.update"].includes(action) &&
+    input?.destination !== undefined
+  )
+    await grants.require(input.destination);
+  if (
+    [
+      "tracks.artwork",
+      "artwork.preview",
+      "tracks.relink",
+      "restore",
+      "backup",
+    ].includes(action)
+  )
+    await grants.require(input?.path);
+}
+app
+  .whenReady()
+  .then(async () => {
+    worker = utilityProcess.fork(join(__dirname, "worker.js"), [], {
+      serviceName: "TuneVault library",
+    });
+    worker.on("message", (message: any) => {
+      if (message.changed) {
+        window?.webContents.send("tunevault:changed");
+        return;
+      }
+      const request = pending.get(message.id);
+      if (!request) return;
+      clearTimeout(request.timeout);
+      pending.delete(message.id);
+      if (message.error) request.reject(new Error(message.error));
+      else request.resolve(message.result);
+    });
+    worker.on("exit", () => {
+      for (const request of pending.values()) {
+        clearTimeout(request.timeout);
+        request.reject(
+          new Error(
+            "Library process stopped. Reopen TuneVault to recover interrupted jobs.",
+          ),
+        );
+      }
+      pending.clear();
+    });
+    const runtime = await command("__init", {
+      dataDir: join(app.getPath("userData"), "library"),
+      toolsDir: app.isPackaged
+        ? join(process.resourcesPath, "tools")
+        : resolve("resources/tools", `${process.platform}-${process.arch}`),
+    });
+    credentials = new Credentials(
+      app.getPath("userData"),
+      app.getPath("temp"),
+      safeStorage,
+    );
+    await command("__cookies", { path: await credentials.initialize() });
+    const initial = await command("snapshot");
+    let appearance: "system" | "light" | "dark" = initial.settings.appearance;
+    let accent: "blue" | "orange" = initial.settings.accent;
+    nativeTheme.themeSource = appearance;
+    let glass: typeof import("electron-liquid-glass").default | null = null;
+    if (
+      process.platform === "darwin" &&
+      Number(process.getSystemVersion().split(".")[0]) >= 26
+    ) {
+      try {
+        glass = (await import("electron-liquid-glass")).default;
+      } catch {
+        /* Optional native material falls back to opaque chrome. */
+      }
+    }
+    let nativeGlass = false;
+    ipcMain.on("tunevault:appearance", (event) => {
+      event.returnValue = {
+        appearance,
+        accent,
+        nativeGlass,
+        systemDark: nativeTheme.shouldUseDarkColors,
+      };
+    });
+    const icon = nativeImage.createFromPath(
+      app.isPackaged
+        ? join(process.resourcesPath, "icon.png")
+        : resolve("resources/icon.png"),
+    );
+    app.setAboutPanelOptions({
+      applicationName: "TuneVault",
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      copyright: "Copyright © 2026 Nathanial Henniges",
+      credits:
+        "MIT License · Local music archive and portable-player exports. Generated concept logo; third-party components retain their own licenses.",
+      website: "https://github.com/nathanialhenniges/tunevault",
+      iconPath: app.isPackaged
+        ? join(process.resourcesPath, "icon.png")
+        : resolve("resources/icon.png"),
+    });
+    if (!app.isPackaged) app.dock?.setIcon(icon);
+    let jobsActive = false;
+    let updateDownloading = false;
+    const updates = new UpdateService({
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      osVersion:
+        process.platform === "darwin" ? process.getSystemVersion() : release(),
+      cacheDir: join(app.getPath("userData"), "updates"),
+      ...updateOptions(),
+      jobsActive: () => jobsActive,
+    });
+    protocol.handle("tunevault-art", async (request) => {
+      try {
+        const url = new URL(request.url);
+        if (
+          url.hostname !== "track" ||
+          !/^\/[a-zA-Z0-9-]{1,100}$/.test(url.pathname)
+        )
+          return new Response("Invalid artwork", { status: 400 });
+        const result = await command("artwork.get", {
+          id: url.pathname.slice(1),
+        });
+        if (!result?.path) return new Response("No artwork", { status: 404 });
+        return net.fetch(pathToFileURL(result.path).href);
+      } catch {
+        return new Response("Artwork unavailable", { status: 404 });
+      }
+    });
+    window = new BrowserWindow({
+      show: false,
+      width: 1440,
+      height: 900,
+      minWidth: 720,
+      minHeight: 520,
+      title: "TuneVault",
+      icon,
+      transparent: !!glass,
+      backgroundColor: glass
+        ? "#00000000"
+        : nativeTheme.shouldUseDarkColors
+          ? "#161719"
+          : "#ffffff",
+      webPreferences: {
+        preload: join(__dirname, "../preload/index.js"),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+      },
+    });
+    if (glass) {
+      try {
+        nativeGlass =
+          glass.addView(window.getNativeWindowHandle(), {
+            cornerRadius: 12,
+            opaque: false,
+          }) >= 0 &&
+          !nativeTheme.prefersReducedTransparency &&
+          !nativeTheme.shouldUseHighContrastColors;
+      } catch {
+        nativeGlass = false;
+      }
+      window.setWindowButtonVisibility(true);
+    }
+    const updateMaterial = () => {
+      const active =
+        nativeGlass &&
+        !nativeTheme.prefersReducedTransparency &&
+        !nativeTheme.shouldUseHighContrastColors;
+      window?.setBackgroundColor(
+        active
+          ? "#00000000"
+          : nativeTheme.shouldUseDarkColors
+            ? "#18191b"
+            : "#ffffff",
+      );
+      window?.webContents.send("tunevault:materials", active);
+      window?.webContents.send(
+        "tunevault:system-theme",
+        nativeTheme.shouldUseDarkColors,
+      );
+    };
+    nativeTheme.on("updated", updateMaterial);
+    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    window.webContents.on("will-navigate", (event, url) => {
+      if (url !== expectedUrl) event.preventDefault();
+    });
+    window.webContents.session.setPermissionRequestHandler(
+      (_wc, _permission, callback) => callback(false),
+    );
+    ipcMain.handle("tunevault:drop", async (event, paths: unknown) => {
+      validateSender(event);
+      if (
+        !Array.isArray(paths) ||
+        paths.length > 10000 ||
+        paths.some((path) => typeof path !== "string")
+      )
+        throw new Error("Invalid drop");
+      return Promise.all(paths.map((path) => grants.grant(path)));
+    });
+    ipcMain.handle(
+      "tunevault:command",
+      async (event, action: unknown, raw?: unknown) => {
+        validateSender(event);
+        if (
+          typeof action !== "string" ||
+          JSON.stringify(raw ?? {}).length > 4_000_000
+        )
+          throw new Error("Invalid request");
+        if (
+          [
+            "chooseImport",
+            "chooseImportFolder",
+            "chooseVault",
+            "chooseTargetFolder",
+            "chooseArtwork",
+            "chooseBackup",
+            "chooseRestore",
+            "chooseReference",
+          ].includes(action)
+        )
+          return picker(action);
+        const input = raw as any;
+        if (action === "credentials.status") return credentials!.status();
+        if (action === "credentials.disconnect") {
+          const state = await command("snapshot");
+          if (
+            state.jobs.some((j: any) =>
+              ["running", "queued"].includes(j.status),
+            )
+          )
+            throw new Error(
+              "Finish or cancel active jobs before disconnecting credentials",
+            );
+          await command("__cookies", { path: null });
+          await credentials!.disconnect();
+          return credentials!.status();
+        }
+        if (action === "credentials.connect") {
+          const state = await command("snapshot");
+          if (
+            state.jobs.some((j: any) =>
+              ["running", "queued"].includes(j.status),
+            )
+          )
+            throw new Error(
+              "Finish or cancel active jobs before changing credentials",
+            );
+          const consent = await dialog.showMessageBox(window!, {
+            type: "warning",
+            buttons: ["Cancel", "Choose exported cookies"],
+            defaultId: 0,
+            cancelId: 0,
+            title: "Use YouTube account cookies?",
+            message: "Cookies are account credentials.",
+            detail:
+              "Only choose intentionally exported YouTube/Google cookies from your own account. TuneVault stores an OS-encrypted copy, gives yt-dlp a temporary cookie file for YouTube requests, and removes it when you disconnect or quit. It never reads browser cookies automatically. Never share this file or include it in public issues.",
+          });
+          if (consent.response !== 1) return credentials!.status();
+          const selected = await dialog.showOpenDialog(window!, {
+            title: "Choose exported YouTube cookies",
+            properties: ["openFile"],
+            filters: [{ name: "Netscape cookies", extensions: ["txt"] }],
+          });
+          if (selected.canceled || !selected.filePaths[0])
+            return credentials!.status();
+          const { readFile, stat } = await import("node:fs/promises");
+          const file = selected.filePaths[0];
+          if ((await stat(file)).size > 1024 * 1024)
+            throw new Error("Cookie file exceeds 1 MB");
+          await command("__cookies", {
+            path: await credentials!.connect(await readFile(file, "utf8")),
+          });
+          return credentials!.status();
+        }
+        if (action.startsWith("updates.")) {
+          const state = await command("snapshot");
+          jobsActive = state.jobs.some((job: any) =>
+            ["queued", "running"].includes(job.status),
+          );
+          if (action === "updates.check") return updates.check();
+          if (action === "updates.download") {
+            if (updateDownloading)
+              throw new Error("An update download is already active");
+            updateDownloading = true;
+            try {
+              return await updates.download();
+            } finally {
+              updateDownloading = false;
+            }
+          }
+          if (action === "updates.cancel") return updates.cancel();
+          if (action === "updates.reveal")
+            return shell.showItemInFolder(await updates.verifiedDownload());
+          if (action === "updates.install") return updates.install();
+          throw new Error("Unknown update command");
+        }
+        if (action === "description.copy") {
+          const state = await command("snapshot");
+          const track = state.tracks.find((t: any) => t.id === input?.id);
+          if (!track) throw new Error("Unknown track");
+          clipboard.writeText(
+            (track.source?.description || track.metadata.comment || "").slice(
+              0,
+              200000,
+            ),
+          );
+          return true;
+        }
+        if (action === "app.about") return app.showAboutPanel();
+        if (action === "app.info")
+          return {
+            version: app.getVersion(),
+            platform: process.platform,
+            arch: process.arch,
+            runtime,
+            nativeGlass,
+            packaged: app.isPackaged,
+          };
+        if (action === "openExternal") {
+          const url = new URL(input?.url);
+          if (
+            url.protocol !== "https:" ||
+            ![
+              "github.com",
+              "www.youtube.com",
+              "youtube.com",
+              "musicbrainz.org",
+              "coverartarchive.org",
+              "imazing.com",
+            ].includes(url.hostname) ||
+            url.username ||
+            url.password
+          )
+            throw new Error("Unsupported external link");
+          return shell.openExternal(url.href);
+        }
+        if (action === "reveal") {
+          const snapshot = await command("snapshot");
+          const path = input?.trackId
+            ? snapshot.tracks.find((x: any) => x.id === input.trackId)?.path
+            : input?.targetId
+              ? input.batchId
+                ? snapshot.receipts.find(
+                    (x: any) =>
+                      x.targetId === input.targetId &&
+                      x.batchId === input.batchId,
+                  )?.path
+                : snapshot.targets.find((x: any) => x.id === input.targetId)
+                    ?.destination
+              : input?.path;
+          const paths = [
+            ...snapshot.tracks.map((x: any) => x.path),
+            ...snapshot.receipts.map((x: any) => x.path),
+            ...snapshot.targets.map((x: any) => x.destination),
+            snapshot.settings.vault,
+          ];
+          if (!path || !paths.includes(path))
+            throw new Error("Choose a library or export location");
+          return shell.showItemInFolder(path);
+        }
+        if (action === "legal.read") {
+          const name = input?.name;
+          if (
+            ![
+              "terms-of-use",
+              "privacy-policy",
+              "third-party-notices",
+              "install-update",
+            ].includes(name)
+          )
+            throw new Error("Unknown document");
+          const { readFile } = await import("node:fs/promises");
+          return readFile(
+            app.isPackaged
+              ? join(process.resourcesPath, "docs", `${name}.md`)
+              : resolve("docs", `${name}.md`),
+            "utf8",
+          );
+        }
+        if (
+          updateDownloading &&
+          [
+            "import.start",
+            "source.acquire",
+            "export.prepare",
+            "mixes.split",
+            "jobs.retry",
+          ].includes(action)
+        )
+          throw new Error(
+            "Finish or cancel the update download before starting media jobs",
+          );
+        if (!commands.has(action)) throw new Error("Unknown command");
+        await checkPaths(action, input);
+        const result = await command(action, input);
+        if (action === "snapshot")
+          jobsActive = result.jobs.some((job: any) =>
+            ["running", "queued"].includes(job.status),
+          );
+        if (action === "settings.update") {
+          appearance = result.appearance;
+          accent = result.accent;
+          nativeTheme.themeSource = appearance;
+          updateMaterial();
+        }
+        return result;
+      },
+    );
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate([
+        ...(process.platform === "darwin"
+          ? [
+              {
+                label: "TuneVault",
+                submenu: [
+                  { role: "about" as const },
+                  {
+                    label: "Settings…",
+                    accelerator: "CmdOrCtrl+,",
+                    click: () =>
+                      window?.webContents.send("tunevault:menu", "settings"),
+                  },
+                  { type: "separator" as const },
+                  { role: "services" as const },
+                  { role: "hide" as const },
+                  { role: "hideOthers" as const },
+                  { type: "separator" as const },
+                  { role: "quit" as const },
+                ],
+              },
+            ]
+          : []),
+        {
+          label: "File",
+          submenu: [
+            {
+              label: "Add files…",
+              accelerator: "CmdOrCtrl+O",
+              click: () => window?.webContents.send("tunevault:menu", "import"),
+            },
+            { role: "close" },
+          ],
+        },
+        { role: "editMenu" },
+        { role: "viewMenu" },
+        { role: "windowMenu" },
+        {
+          label: "Help",
+          submenu: [
+            { label: "About TuneVault", click: () => app.showAboutPanel() },
+            {
+              label: "Report an issue",
+              click: () =>
+                shell.openExternal(
+                  "https://github.com/nathanialhenniges/tunevault/issues",
+                ),
+            },
+          ],
+        },
+      ]),
+    );
+    expectedUrl =
+      process.env.ELECTRON_RENDERER_URL ||
+      pathToFileURL(join(__dirname, "../renderer/index.html")).href;
+    window.webContents.on("page-title-updated", (event) => {
+      event.preventDefault();
+      window?.setTitle("TuneVault");
+    });
+    window.once("ready-to-show", () => {
+      if (
+        process.env.TUNEVAULT_E2E !== "1" ||
+        process.env.TUNEVAULT_E2E_VISIBLE === "1"
+      )
+        window?.show();
+    });
+    await window.loadURL(expectedUrl);
+    const autoCheck = setTimeout(async () => {
+      try {
+        const state = await command("snapshot");
+        jobsActive = state.jobs.some((j: any) =>
+          ["running", "queued"].includes(j.status),
+        );
+        if (state.settings.autoUpdates && !jobsActive) await updates.check();
+      } catch {
+        /* Offline/update errors do not interrupt library use. */
+      }
+    }, 15000);
+    autoCheck.unref();
+  })
+  .catch(async (error) => {
+    dialog.showErrorBox(
+      "TuneVault could not start",
+      error instanceof Error ? error.message : String(error),
+    );
+    app.quit();
+  });
+app.on("second-instance", () => {
+  window?.show();
+  window?.focus();
+});
+app.on("window-all-closed", () => app.quit());
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  event.preventDefault();
+  quitting = true;
+  void credentials?.clearSession().finally(() => {
+    worker?.kill();
+    app.quit();
+  });
+  if (!credentials) {
+    worker?.kill();
+    app.quit();
+  }
+});

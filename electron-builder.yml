@@ -1,0 +1,49 @@
+appId: com.nathanialhenniges.tunevault
+productName: TuneVault
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+asar: true
+extraResources:
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/tools/${platform}-${arch}
+    to: tools
+    filter:
+      - "*"
+      - "!*.download"
+  - from: docs
+    to: docs
+  - from: LICENSE
+    to: LICENSE
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+artifactName: TuneVault-${version}-${os}-${arch}.${ext}
+publish:
+  provider: github
+  owner: nathanialhenniges
+  repo: tunevault
+mac:
+  target: dmg
+  category: public.app-category.music
+  identity: null
+  hardenedRuntime: false
+  minimumSystemVersion: "14.0"
+  icon: build/TuneVault.icon
+dmg:
+  sign: false
+win:
+  target: nsis
+  signExecutable: false
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
