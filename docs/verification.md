@@ -7,7 +7,7 @@ passed. Final platform CI and review results are appended as they become known.
 ## Source and real file processing
 
 - TypeScript and source/test ESLint passed.
-- 46 unit/integration tests passed: SQLite/settings, native file grants,
+- 47 unit/integration tests passed: SQLite/settings, native file grants,
   credential storage/cleanup contract, reference occurrence order/refresh,
   safe paths, chapter parsing, target identity/history, backup/revision restore,
   acquisition failure/retry/cancel with controlled provider fixtures, updater
@@ -32,8 +32,9 @@ passed. Final platform CI and review results are appended as they become known.
   flow, sandbox/context isolation checks, persisted themes and legal dialogs.
   Final packaged rerun also passed native System appearance events while hidden
   and preservation of unsaved inspector edits across all four themes.
-- The 10,000-row packaged fixture passed: approximately 1193 ms launch to
-  rendered count, 28 ms search and 94 ms page/scroll action in one local run.
+- The 10,000-row packaged fixture passed: approximately 1.2–4.0 s launch to
+  rendered count, 28–409 ms search and 94–782 ms page/scroll across two local
+  runs with different system load.
   DOM is bounded to 100 track rows. At 200% zoom the document stayed within
   the 512 CSS-pixel viewport while the table retained its own horizontal scroll.
   These are observed local timings, not cross-platform performance guarantees.

@@ -279,3 +279,50 @@ it("reads normal Apple Music XML without resolving external DTDs and rejects ent
     ),
   ).toThrow("entities");
 });
+
+it("metadata-only restore cannot grant access to media or artwork outside the selected vault", async () => {
+  const { service, root } = await fixture();
+  const secret = path.join(root, "private.txt");
+  await writeFile(secret, "DO NOT COPY");
+  const backup = (await service.dispatch("backup", {
+    path: root,
+    includeMedia: false,
+  })) as any;
+  const bundleFile = path.join(backup.path, "bundle.json");
+  const bundle = JSON.parse(await readFile(bundleFile, "utf8"));
+  bundle.snapshot.tracks = [
+    {
+      id: "malicious",
+      hash: "a".repeat(64),
+      path: secret,
+      originalPath: "",
+      metadata: { title: "Untrusted" },
+      locks: [],
+      origins: {},
+      revision: 1,
+      artwork: secret,
+      favorite: false,
+      missing: false,
+      codec: "mp3",
+      container: "mp3",
+      duration: 1,
+      bitrate: 1,
+      sampleRate: 44100,
+      bytes: 11,
+      source: null,
+    },
+  ];
+  await writeFile(bundleFile, JSON.stringify(bundle));
+  await service.dispatch("restore", { path: backup.path });
+  const track = (await service.snapshot()).tracks[0];
+  expect(track.missing).toBe(true);
+  expect(track.path).not.toBe(secret);
+  expect(track.artwork).toBeNull();
+  expect(await service.dispatch("artwork.get", { id: track.id })).toEqual({
+    path: null,
+  });
+  await expect(
+    service.dispatch("backup", { path: root, includeMedia: true }),
+  ).rejects.toThrow("relink missing");
+  expect(await readFile(secret, "utf8")).toBe("DO NOT COPY");
+});

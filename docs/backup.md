@@ -20,3 +20,8 @@ cleared and must be selected again. Historical jobs are cancelled and their
 path-bearing payloads are removed. A backup is not permission to write to
 arbitrary directories. Full-media bundles also preserve saved metadata
 revision media/art; metadata-only revisions still require their existing files.
+
+For metadata-only restore, existing media/art must stay inside the explicitly
+selected vault. Paths outside that root are treated as missing and require an
+explicit relink; a backup cannot grant read access to arbitrary local files.
+Artwork is bounded and validated before it is served to the renderer.

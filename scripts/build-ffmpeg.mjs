@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile, copyFile, chmod } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { cpus, tmpdir } from 'node:os'
+import { existsSync } from 'node:fs'
 
 if (process.platform !== 'darwin') throw new Error('This controlled FFmpeg build is for native macOS; Windows uses the pinned GPL binary')
 const root = resolve('resources/tools', `${process.platform}-${process.arch}`)
@@ -10,7 +11,7 @@ const work = resolve(process.env.TUNEVAULT_BUILD_DIR || join(tmpdir(), `tunevaul
 const prefix = join(work, 'prefix')
 await mkdir(root, { recursive: true }); await mkdir(work, { recursive: true }); await mkdir(prefix, { recursive: true })
 const archives = [
-  { file: 'ffmpeg-8.0.1.tar.xz', url: 'https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz', sha256: '05ee0b03119b45c0bdb4df654b96802e909e0a752f72e4fe3794f487229e5a41' },
+  { file: 'ffmpeg-n8.0.1.tar.gz', url: 'https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n8.0.1.tar.gz', sha256: '679aa13a19415d5ddab91e580084e3ab20c963c8240001e5cbb955a97bdd81b1' },
   { file: 'lame-3.100.tar.gz', url: 'https://deb.debian.org/debian/pool/main/l/lame/lame_3.100.orig.tar.gz', sha256: 'ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e' }
 ]
 for (const source of archives) {
@@ -37,11 +38,15 @@ for (const source of archives) {
   await copyFile(path, join(root, source.file))
 }
 const jobs = String(Math.min(8, cpus().length))
-const run = (file, args, cwd, env = process.env) => execFileSync(file, args, { cwd, env, stdio: 'inherit' })
+const buildEnv = { ...process.env, MACOSX_DEPLOYMENT_TARGET: '14.0' }
+const run = (file, args, cwd, env = buildEnv) => execFileSync(file, args, { cwd, env, stdio: 'inherit' })
 const lame = join(work, 'lame-3.100')
+if (existsSync(join(lame, 'Makefile'))) run('/usr/bin/make', ['distclean'], lame)
 run('./configure', [`--prefix=${prefix}`, '--disable-shared', '--enable-static', '--disable-frontend', '--disable-dependency-tracking'], lame)
 run('/usr/bin/make', ['-j', jobs], lame); run('/usr/bin/make', ['install'], lame)
-const ffmpeg = join(work, 'ffmpeg-8.0.1')
+const ffmpeg = join(work, 'FFmpeg-n8.0.1')
+if ((await readFile(join(ffmpeg, 'RELEASE'), 'utf8')).trim() !== '8.0.1') throw new Error('Unexpected FFmpeg source release')
+if (existsSync(join(ffmpeg, 'ffbuild/config.mak'))) run('/usr/bin/make', ['distclean'], ffmpeg)
 const flags = [
   `--prefix=${prefix}`, '--disable-shared', '--enable-static', '--disable-doc', '--disable-debug', '--disable-autodetect', '--disable-network', '--disable-x86asm', '--disable-everything', '--enable-ffmpeg', '--enable-ffprobe', '--enable-avdevice', '--enable-avfilter', '--enable-swscale', '--enable-swresample', '--enable-libmp3lame', '--enable-zlib',
   `--extra-cflags=-I${prefix}/include`, `--extra-ldflags=-L${prefix}/lib`,
@@ -50,11 +55,14 @@ const flags = [
   '--enable-demuxer=mov,mp3,flac,wav,ogg,aac,matroska,image2,image2pipe,lavfi', '--enable-muxer=mp3,ipod,mov,flac,wav,ogg,image2,image2pipe,null',
   '--enable-filter=aresample,anull,atrim,asetpts,scale,pad,format,crop,setsar,color,sine,anullsrc', '--enable-indev=lavfi'
 ]
-run('./configure', flags, ffmpeg, { ...process.env, MACOSX_DEPLOYMENT_TARGET: '14.0' })
+run('./configure', flags, ffmpeg)
 run('/usr/bin/make', ['-j', jobs], ffmpeg)
 for (const name of ['ffmpeg', 'ffprobe']) {
   await copyFile(join(ffmpeg, name), join(root, name)); await chmod(join(root, name), 0o755)
   execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', join(root, name)])
+  const loadCommands = execFileSync('/usr/bin/otool', ['-l', join(root, name)], { encoding: 'utf8' })
+  const minimum = /cmd LC_BUILD_VERSION[\s\S]*?\bminos\s+(\S+)/.exec(loadCommands)?.[1]
+  if (!minimum || !/^14\.0(?:\.0)?$/.test(minimum)) throw new Error(`${name} deployment minimum is ${minimum || 'unknown'}, expected macOS14.0`)
 }
 await copyFile(join(ffmpeg, 'COPYING.LGPLv2.1'), join(root, 'ffmpeg.LICENSE'))
 await copyFile(join(lame, 'COPYING'), join(root, 'lame.LICENSE'))

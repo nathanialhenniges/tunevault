@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID, createHash } from "node:crypto";
 import { mkdirSync, existsSync } from "node:fs";
@@ -257,7 +258,25 @@ export class LibraryService {
         return this.snapshot();
       case "artwork.get": {
         const track = this.get<Track>("tracks", data.id);
-        return { path: track.artwork };
+        if (!track.artwork) return { path: null };
+        const selected = await confined(
+          this.requireVault(),
+          path.relative(this.requireVault(), track.artwork),
+        );
+        const file = await stat(selected);
+        if (!file.isFile() || file.size > 20 * 1024 * 1024)
+          throw new Error("Artwork is not a bounded image");
+        const image = await sharp(selected, {
+          limitInputPixels: 40000000,
+        }).metadata();
+        if (
+          !["jpeg", "png", "webp"].includes(image.format || "") ||
+          !image.width ||
+          !image.height ||
+          image.width * image.height > 40000000
+        )
+          throw new Error("Artwork is invalid");
+        return { path: selected };
       }
       case "settings.update": {
         const settings = this.settings();
@@ -2254,6 +2273,38 @@ export class LibraryService {
           throw new Error(
             "Metadata-only backup media must use an existing absolute location",
           );
+        const vault = this.requireVault();
+        try {
+          track.path = await confined(vault, path.relative(vault, track.path));
+        } catch {
+          track.path = await confined(
+            vault,
+            `.missing/${track.id}${/^\.[a-z0-9]{1,8}$/i.test(path.extname(track.path)) ? path.extname(track.path) : ".audio"}`,
+          );
+        }
+        for (const field of ["artwork", "artworkOriginal"] as const) {
+          if (!track[field]) continue;
+          try {
+            const candidate = await confined(
+              vault,
+              path.relative(vault, text(track[field], 4000)),
+            );
+            const image = await sharp(candidate, {
+              limitInputPixels: 40000000,
+            }).metadata();
+            if (
+              (await stat(candidate)).size > 20 * 1024 * 1024 ||
+              !["jpeg", "png", "webp"].includes(image.format || "") ||
+              !image.width ||
+              !image.height ||
+              image.width * image.height > 40000000
+            )
+              throw new Error("Invalid artwork");
+            track[field] = candidate;
+          } catch {
+            track[field] = null;
+          }
+        }
       }
     }
     for (const playlist of snapshot.playlists) {

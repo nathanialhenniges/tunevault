@@ -60,9 +60,10 @@ if (platform === 'darwin') {
       if (!output.includes('8.0.1') || output.includes('--enable-nonfree')) throw new Error('Unacceptable FFmpeg')
     }
   } catch { execFileSync(process.execPath, ['scripts/build-ffmpeg.mjs'], { stdio: 'inherit' }) }
+  const ffmpegBuild = JSON.parse(await readFile(join(root, 'ffmpeg-build.json'), 'utf8'))
   for (const name of ['ffmpeg', 'ffprobe']) {
     const path = join(root, name), bytes = await readFile(path)
-    manifest.entries.push({ name, file: name, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, version: lock.macFFmpegBuild.version, sourceUrl: 'https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz', license: lock.macFFmpegBuild.license })
+    manifest.entries.push({ name, file: name, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length, version: lock.macFFmpegBuild.version, sourceUrl: ffmpegBuild.sources[0].url, license: lock.macFFmpegBuild.license })
   }
 }
 await writeFile(join(root, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)

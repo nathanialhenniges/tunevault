@@ -44,7 +44,7 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
     const diagnostics = await page.evaluate(() =>
       window.tunevault.invoke("diagnostics"),
     );
-    expect(diagnostics.tools.ffmpeg).toContain("Resources");
+    expect(diagnostics.tools.ffmpeg).toMatch(/[\\/]resources[\\/]/i);
     const vault = join(root, "vault"),
       destination = join(root, "export");
     await mkdir(vault);
