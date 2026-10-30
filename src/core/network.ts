@@ -1,7 +1,7 @@
 import sharp from "sharp";
+import { version } from "../../package.json";
 
-const userAgent =
-  "TuneVault/4.0.0 (https://github.com/nathanialhenniges/tunevault)";
+const userAgent = `TuneVault/${version} (https://github.com/nathanialhenniges/tunevault)`;
 let queue = Promise.resolve();
 let nextRequestAt = 0;
 const cache = new Map<
@@ -32,10 +32,11 @@ function trusted(url: URL, allowImageRedirects: boolean) {
     url.username ||
     url.password ||
     url.port ||
-    (!["musicbrainz.org", "coverartarchive.org", "archive.org"].includes(
-      url.hostname,
-    ) &&
-      !(allowImageRedirects && url.hostname.endsWith(".archive.org")))
+    !(allowImageRedirects
+      ? url.hostname === "coverartarchive.org" ||
+        url.hostname === "archive.org" ||
+        url.hostname.endsWith(".archive.org")
+      : url.hostname === "musicbrainz.org")
   )
     throw new Error("Untrusted metadata/artwork URL");
 }
@@ -45,9 +46,11 @@ export async function fetchBounded(
   limit: number,
   allowImageRedirects = false,
   signal?: AbortSignal,
+  policy?: (url: URL) => void,
 ): Promise<{ bytes: Buffer; mime: string }> {
   trusted(url, allowImageRedirects);
   signal?.throwIfAborted();
+  policy?.(url);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20 * 1024 * 1024)
     throw new Error("Invalid provider response bound");
   const key = `${url.href}|${limit}|${allowImageRedirects}`;
@@ -61,6 +64,7 @@ export async function fetchBounded(
   let redirects = 0;
   for (let attempt = 0; attempt < 3;) {
     trusted(url, allowImageRedirects);
+    policy?.(url);
     // One shared start queue keeps both metadata and artwork requests polite.
     const turn = queue.then(async () => {
       await wait(Math.max(0, nextRequestAt - Date.now()), signal);
@@ -69,6 +73,8 @@ export async function fetchBounded(
     });
     queue = turn.catch(() => {});
     await turn;
+    signal?.throwIfAborted();
+    policy?.(url);
     const response = await fetch(url, {
       headers: { "User-Agent": userAgent },
       signal: signal
@@ -76,6 +82,13 @@ export async function fetchBounded(
         : AbortSignal.timeout(15000),
       redirect: "manual",
     });
+    try {
+      signal?.throwIfAborted();
+      policy?.(url);
+    } catch (error) {
+      await response.body?.cancel();
+      throw error;
+    }
     if (response.status === 429 || response.status === 503) {
       const retry = response.headers.get("retry-after");
       const retryMs = retry
@@ -96,6 +109,8 @@ export async function fetchBounded(
       if (!allowImageRedirects || !next || ++redirects > 4)
         throw new Error("Unexpected provider redirect");
       url = new URL(next, url);
+      trusted(url, allowImageRedirects);
+      policy?.(url);
       continue;
     }
     if (!response.ok) {
@@ -123,6 +138,7 @@ export async function fetchBounded(
       reader?.releaseLock();
     }
     signal?.throwIfAborted();
+    policy?.(url);
     const result = {
       bytes: Buffer.concat(chunks),
       mime: response.headers.get("content-type") || "",
@@ -142,6 +158,7 @@ export async function fetchBounded(
         throw new Error("Provider returned invalid artwork dimensions");
     } else JSON.parse(result.bytes.toString("utf8"));
     signal?.throwIfAborted();
+    policy?.(url);
     if (result.bytes.length <= 5 * 1024 * 1024) {
       while (
         cache.size &&

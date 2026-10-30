@@ -279,28 +279,52 @@ export class LibraryService {
     const row = this.db
       .prepare("SELECT data FROM settings WHERE id=1")
       .get() as any;
+    const saved = row ? JSON.parse(row.data) : {};
     return {
-          vault: "",
-          appearance: "system",
-          accent: "blue",
-          autoUpdates: true,
-          onlineAcknowledged: false,
-          disclaimerAccepted: false,
-          disclaimerVersion: 1,
-          onboarded: false,
-          tipsSeen: [],
-          selection: [],
-          view: "tracks",
-          filter: "all",
-          ...(row ? JSON.parse(row.data) : {}),
-        };
+      vault: "",
+      appearance: "system",
+      accent: "blue",
+      autoUpdates: true,
+      onlineAcknowledged: false,
+      metadataOnline: true,
+      disclaimerAccepted: false,
+      disclaimerVersion: 1,
+      onboarded: false,
+      tipsSeen: [],
+      selection: [],
+      view: "tracks",
+      filter: "all",
+      ...saved,
+      metadataServices: {
+        musicbrainz: true,
+        coverArtArchive: true,
+        acoustid: false,
+        ...saved.metadataServices,
+      },
+    };
   }
   private saveSettings(value: Settings) {
+    const previous = this.settings();
     this.db
       .prepare(
         "INSERT INTO settings(id,data) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
       )
       .run(JSON.stringify(value));
+    if (
+      (previous.metadataOnline && !value.metadataOnline) ||
+      Object.entries(previous.metadataServices || {}).some(
+        ([service, enabled]) =>
+          enabled &&
+          !value.metadataServices?.[
+            service as keyof NonNullable<Settings["metadataServices"]>
+          ],
+      )
+    ) {
+      this.lookupAbort.abort(
+        new Error("Metadata service disabled in Settings"),
+      );
+      this.lookupAbort = new AbortController();
+    }
   }
   private async repointVault(
     settings: Settings,
@@ -492,6 +516,8 @@ export class LibraryService {
               "accent",
               "autoUpdates",
               "onlineAcknowledged",
+              "metadataOnline",
+              "metadataServices",
               "disclaimerAccepted",
               "disclaimerVersion",
               "onboarded",
@@ -515,18 +541,35 @@ export class LibraryService {
         for (const key of [
           "autoUpdates",
           "onlineAcknowledged",
+          "metadataOnline",
           "disclaimerAccepted",
           "onboarded",
         ])
           if (key in data && typeof data[key] !== "boolean")
             throw new Error("Invalid setting");
         if (data.selection) ids(data.selection);
-        if (data.disclaimerVersion !== undefined &&
-          (!Number.isSafeInteger(data.disclaimerVersion) || data.disclaimerVersion < 1 || data.disclaimerVersion > CURRENT_DISCLAIMER_VERSION))
+        if (data.metadataServices !== undefined) {
+          const services = object(data.metadataServices);
+          for (const [key, value] of Object.entries(services))
+            if (
+              !["musicbrainz", "coverArtArchive", "acoustid"].includes(key) ||
+              typeof value !== "boolean"
+            )
+              throw new Error("Invalid metadata service setting");
+          data.metadataServices = { ...settings.metadataServices, ...services };
+        }
+        if (
+          data.disclaimerVersion !== undefined &&
+          (!Number.isSafeInteger(data.disclaimerVersion) ||
+            data.disclaimerVersion < 1 ||
+            data.disclaimerVersion > CURRENT_DISCLAIMER_VERSION)
+        )
           throw new Error("Invalid disclaimer version");
         if (data.tipsSeen !== undefined) {
           const tips = ids(data.tipsSeen);
-          if (tips.some(tip => !["import", "playlist", "target"].includes(tip)))
+          if (
+            tips.some((tip) => !["import", "playlist", "target"].includes(tip))
+          )
             throw new Error("Unknown onboarding tip");
           data.tipsSeen = [...new Set(tips)];
         }
@@ -592,6 +635,11 @@ export class LibraryService {
           "user",
           undefined,
           data.addLocks === undefined ? undefined : this.locks(data.addLocks),
+          this.lookupOrigins(
+            ids(data.ids),
+            this.metadata(data.changes),
+            data.lookupSources,
+          ),
         );
       case "tracks.undo": {
         const revisions = this.all<{
@@ -1056,8 +1104,13 @@ export class LibraryService {
         return { cancelled: true };
       case "lookup.search":
         return this.lookup(this.get<Track>("tracks", data.id));
+      case "lookup.identify":
+        this.requireMetadataService("acoustid");
+        throw new Error(
+          "AcoustID identification is unavailable: this build needs a registered application key and verified fingerprint tool",
+        );
       case "lookup.artworkPreview": {
-        this.requireOnline();
+        this.requireMetadataService("coverArtArchive");
         const signal = AbortSignal.any([
           this.toolsAbort.signal,
           this.lookupAbort.signal,
@@ -1072,7 +1125,10 @@ export class LibraryService {
         let original: { bytes: Buffer; mime: string } | undefined;
         let fetchedAt = Date.now();
         try {
-          const cached = this.get<any>("cache", `cover-source:${releaseId}`);
+          const cached = this.get<any>(
+            "cache",
+            `cover-source:1200:${releaseId}`,
+          );
           if (Date.now() - cached.at < 86400000) {
             const file = await confined(
               this.requireVault(),
@@ -1087,12 +1143,30 @@ export class LibraryService {
         } catch {
           /* A missing or invalid cached thumbnail can be requested again. */
         }
-        original ??= await fetchBounded(
-          new URL(`https://coverartarchive.org/release/${releaseId}/front-500`),
-          5 * 1024 * 1024,
-          true,
-          signal,
-        );
+        if (!original) {
+          for (const size of [1200, 500]) {
+            try {
+              original = await fetchBounded(
+                new URL(
+                  `https://coverartarchive.org/release/${releaseId}/front-${size}`,
+                ),
+                5 * 1024 * 1024,
+                true,
+                signal,
+                () => this.requireMetadataService("coverArtArchive"),
+              );
+              break;
+            } catch (error) {
+              if (
+                size !== 1200 ||
+                !(error instanceof Error) ||
+                !error.message.includes("(404)")
+              )
+                throw error;
+            }
+          }
+        }
+        if (!original) throw new Error("No artwork found for this release");
         signal.throwIfAborted();
         if (!/^image\/(jpeg|png|webp)(?:;|$)/i.test(original.mime))
           throw new Error("Provider returned an unsupported image");
@@ -1105,13 +1179,13 @@ export class LibraryService {
           const generated = await artwork(
             raw,
             directory,
-            600,
+            1200,
             500000,
             data.padding !== false,
           );
           signal.throwIfAborted();
           this.save("cache", {
-            id: `cover-source:${releaseId}`,
+            id: `cover-source:1200:${releaseId}`,
             path: raw,
             mime: original.mime,
             at: fetchedAt,
@@ -1120,7 +1194,7 @@ export class LibraryService {
             id: "cover:" + token,
             path: generated,
             original: raw,
-            origin: `Cover Art Archive release ${releaseId}`,
+            origin: `coverartarchive:${releaseId}`,
             at: Date.now(),
           });
           return {
@@ -1128,7 +1202,7 @@ export class LibraryService {
             preview:
               "data:image/jpeg;base64," +
               (await readFile(generated)).toString("base64"),
-            origin: `Cover Art Archive release ${releaseId}`,
+            origin: `coverartarchive:${releaseId}`,
           };
         } catch (error) {
           await rm(raw, { force: true });
@@ -1148,14 +1222,23 @@ export class LibraryService {
           cover.original,
         );
       }
-      case "lookup.apply":
-        return this.edit(
-          [text(data.id, 100)],
-          this.metadata(data.changes),
-          undefined,
-          undefined,
-          "approved-lookup",
+      case "lookup.apply": {
+        const selected = [text(data.id, 100)],
+          changes = this.metadata(data.changes);
+        const sources = Object.fromEntries(
+          Object.keys(changes).map((field) => [field, data.token]),
         );
+        return this.edit(
+          selected,
+          changes,
+          undefined,
+          undefined,
+          "user",
+          undefined,
+          undefined,
+          this.lookupOrigins(selected, changes, sources),
+        );
+      }
       case "backup":
         return this.backup(text(data.path, 4000), data.includeMedia === true);
       case "restore":
@@ -1188,6 +1271,46 @@ export class LibraryService {
       throw new Error(
         "Acknowledge authorized-use and third-party network access before online acquisition",
       );
+  }
+  private requireMetadataService(
+    service: "musicbrainz" | "coverArtArchive" | "acoustid",
+  ) {
+    const settings = this.settings();
+    if (!settings.metadataOnline)
+      throw new Error(
+        "Online metadata and artwork lookups are off in Settings",
+      );
+    if (!settings.metadataServices?.[service])
+      throw new Error(`${service} is disabled in Settings`);
+    this.requireOnline();
+  }
+  private lookupOrigins(
+    selected: string[],
+    changes: Partial<Metadata>,
+    sources: unknown,
+  ): Partial<Record<MetadataField, string>> {
+    if (sources === undefined) return {};
+    if (selected.length !== 1)
+      throw new Error("Apply lookup suggestions to one track at a time");
+    const origins: Partial<Record<MetadataField, string>> = {};
+    for (const [field, token] of Object.entries(object(sources))) {
+      if (!fields.includes(field as MetadataField) || !(field in changes))
+        throw new Error("Unknown suggested field");
+      const result = this.get<any>(
+        "cache",
+        "lookup-result:" + text(token, 100),
+      );
+      if (
+        result.trackId !== selected[0] ||
+        Date.now() - result.at >= 7 * 86400000 ||
+        result.result[field] !== changes[field as MetadataField]
+      )
+        throw new Error(
+          "Lookup suggestion expired or does not match this track and field",
+        );
+      origins[field as MetadataField] = `musicbrainz:${result.result.id}`;
+    }
+    return origins;
   }
   private metadata(value: unknown): Partial<Metadata> {
     const changes = object(value);
@@ -1297,6 +1420,7 @@ export class LibraryService {
     origin = "user",
     imageOriginal?: string,
     addLocks?: MetadataField[],
+    fieldOrigins: Partial<Record<MetadataField, string>> = {},
   ): Promise<Snapshot> {
     if (!selected.length) throw new Error("Select tracks to edit");
     const tools = await this.tools();
@@ -1309,7 +1433,8 @@ export class LibraryService {
       const allowed = Object.fromEntries(
         Object.entries(changes).filter(
           ([key]) =>
-            origin === "user" || !track.locks.includes(key as MetadataField),
+            (fieldOrigins[key as MetadataField] || origin) === "user" ||
+            !track.locks.includes(key as MetadataField),
         ),
       );
       const updated: Track = {
@@ -1320,7 +1445,12 @@ export class LibraryService {
           : (locks ?? track.locks),
         origins: {
           ...track.origins,
-          ...Object.fromEntries(Object.keys(allowed).map((k) => [k, origin])),
+          ...Object.fromEntries(
+            Object.keys(allowed).map((k) => [
+              k,
+              fieldOrigins[k as MetadataField] || origin,
+            ]),
+          ),
         },
         artwork: image ?? track.artwork,
         artworkOriginal: imageOriginal ?? track.artworkOriginal,
@@ -2991,14 +3121,15 @@ export class LibraryService {
     }
   }
   private async lookup(track: Track) {
-    this.requireOnline();
+    this.requireMetadataService("musicbrainz");
     const query = [track.metadata.title, track.metadata.artist]
       .filter(Boolean)
       .join(" ");
     const key = "lookup:" + query;
     try {
       const cached = this.get<any>("cache", key);
-      if (Date.now() - cached.at < 7 * 86400000) return cached.results;
+      if (Date.now() - cached.at < 7 * 86400000)
+        return this.lookupSuggestions(track.id, cached.results, cached.at);
     } catch {
       /* An absent cache, missing media or disconnected destination remains explicit in the returned state. */
     }
@@ -3013,6 +3144,7 @@ export class LibraryService {
       2 * 1024 * 1024,
       false,
       AbortSignal.any([this.toolsAbort.signal, this.lookupAbort.signal]),
+      () => this.requireMetadataService("musicbrainz"),
     );
     const data = JSON.parse(response.bytes.toString("utf8"));
     const results = (data.recordings || []).map((r: any) => ({
@@ -3031,7 +3163,30 @@ export class LibraryService {
         "MusicBrainz recording suggestion. Verify recording/version and choose fields; cover is not inferred.",
     }));
     this.save("cache", { id: key, at: Date.now(), results });
-    return results;
+    return this.lookupSuggestions(track.id, results, Date.now());
+  }
+  private lookupSuggestions(trackId: string, results: any[], at: number) {
+    return results
+      .filter((result) =>
+        /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
+          result.id,
+        ),
+      )
+      .map((result) => {
+        const token = randomUUID();
+        this.save("cache", {
+          id: "lookup-result:" + token,
+          trackId,
+          result,
+          at,
+        });
+        return {
+          ...result,
+          token,
+          origin: `musicbrainz:${result.id}`,
+          license: "CC0 core metadata",
+        };
+      });
   }
   private async backup(destination: string, includeMedia: boolean) {
     if (this.running.size)

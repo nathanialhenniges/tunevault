@@ -149,6 +149,12 @@ export interface Settings {
   accent: "blue" | "orange";
   autoUpdates: boolean;
   onlineAcknowledged: boolean;
+  metadataOnline?: boolean;
+  metadataServices?: {
+    musicbrainz: boolean;
+    coverArtArchive: boolean;
+    acoustid: boolean;
+  };
   disclaimerAccepted: boolean;
   disclaimerVersion: number;
   onboarded: boolean;

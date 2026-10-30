@@ -28,6 +28,40 @@ recording lookup suggests metadata, which is explicitly reviewed before apply.
 No lookup failure removes saved audio. MusicBrainz requests use a descriptive
 User-Agent, rate limiting and cache.
 
+## Metadata, artwork and other online services
+
+Metadata suggestions are user-initiated; imports do not automatically enrich
+files. Settings > Metadata & artwork controls `metadataOnline` (default true)
+and `metadataServices` (`musicbrainz: true`, `coverArtArchive: true`,
+`acoustid: false`). Disabling online metadata blocks metadata/artwork requests
+only. YouTube actions, updates and browser links remain separately controlled.
+Service preferences are merged with defaults for existing settings.
+
+| Service                                                                                                                      | Request and result                                                                                                                                             | Rights, limits and controls                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [MusicBrainz](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting) / [MetaBrainz](https://metabrainz.org/privacy)      | First metadata source: explicit title/artist search, recording/release IDs; sends IP and identifying version/contact User-Agent. Review fields before applying | Shared request queue spaces requests by at least 1.1 seconds, with bounded retries/backoff. [Core data is CC0; supplementary data is CC BY-NC-SA 3.0](https://musicbrainz.org/doc/About/Data_License). Toggle MusicBrainz or all online metadata off |
+| [Cover Art Archive](https://musicbrainz.org/doc/Cover_Art_Archive/API) / [Internet Archive](https://archive.org/about/terms) | Explicit artwork preview by MusicBrainz release ID, including trusted Archive redirects. Up to 1200px artwork; review before applying                          | Images remain [copyrighted by their owners](https://coverartarchive.org/). No implied embedding/export license. Toggle Cover Art Archive or all online metadata off                                                                                  |
+| [AcoustID](https://acoustid.org/webservice) / [Chromaprint](https://acoustid.org/chromaprint)                                | Off by default and unavailable pending a registered app key and verified bundled fingerprint tool. No fingerprints or audio are sent in this build             | AcoustID free service is noncommercial, maximum three requests/second. A future request would send a fingerprint, duration and application key; no automatic sound identification                                                                    |
+| [YouTube / Google](https://www.youtube.com/t/terms)                                                                          | Requested source search, preview, acquisition and playlist refresh via pinned yt-dlp; optional explicitly connected cookies                                    | Separate network acknowledgement and source-service obligations. Metadata settings do not disable it. [Google privacy](https://policies.google.com/privacy) applies to Google/YouTube/CDN requests                                                   |
+| [GitHub](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)                                        | Update release/artifact requests, including GitHub-controlled asset redirects; public Issues support if you post                                               | Automatic update checks have their own Settings control. Manual checks/downloads remain explicit. [GitHub privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) applies                                 |
+| Spotify / Apple Music                                                                                                        | Local reference files; no active direct connector or subscription-audio extraction                                                                             | Importing a reference sends no list to these services and grants no content rights                                                                                                                                                                   |
+| Browser links / iMazing                                                                                                      | Explicitly opened source, documentation, support and external-tool links                                                                                       | Browser/provider policies apply; metadata controls do not stop browser navigation. iMazing handoff is not transfer verification                                                                                                                      |
+
+Applied service fields retain `service:id` provenance, for example
+`musicbrainz:<recording-mbid>` and `coverartarchive:<release-mbid>` for artwork.
+User edits and existing embedded metadata keep their own origins; choosing a
+suggestion is not evidence that every field or recording identity is correct.
+
+Search cache entries are reusable for seven days and artwork source/preview
+entries for 24 hours. Expiry is a reuse limit, not a deletion schedule. SQLite
+cache rows and Library folder artwork files may remain after expiry; approved
+artwork/revisions and backups also persist. No claim is made that deleting the
+Library folder alone erases app data or provider logs.
+
+iTunes Search, Deezer, Discogs, Last.fm, TheAudioDB, Wikidata and Spotify metadata
+APIs are not fallback metadata/artwork services in this build. Their availability
+or appearance in research does not imply adopted integration or suitable rights.
+
 ## Provider access spike (2026-10-29)
 
 Official Spotify Web API and Apple Music catalog playlist requests without

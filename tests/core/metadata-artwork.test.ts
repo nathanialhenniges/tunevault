@@ -144,7 +144,7 @@ it("reuses validated CAA thumbnail data across restart and keeps lookup failure 
     releaseId,
   })) as { preview: string };
   expect(fetch).toHaveBeenCalledTimes(1);
-  expect(String(fetch.mock.calls[0][0])).toContain("front-500");
+  expect(String(fetch.mock.calls[0][0])).toContain("front-1200");
   service.close();
   vi.resetModules();
   const fresh = await import("../../src/core/library");
@@ -168,4 +168,132 @@ it("reuses validated CAA thumbnail data across restart and keeps lookup failure 
     }),
   ).rejects.toThrow("Offline fixture");
   expect((await restarted.snapshot()).tracks).toEqual([]);
+}, 120000);
+
+it("applies reviewed service fields with validated per-field provenance and preserves user edits", async () => {
+  const { root, service } = await fixture();
+  const source = path.join(root, "provenance.mp3");
+  await run(tools.ffmpeg, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=duration=1",
+    "-c:a",
+    "libmp3lame",
+    source,
+  ]);
+  const job = await settled(
+    service,
+    (await service.dispatch("import.start", { paths: [source] })) as Job,
+  );
+  expect(job.status).toBe("completed");
+  const track = (await service.snapshot()).tracks[0];
+  await service.dispatch("settings.update", { onlineAcknowledged: true });
+  const mbid = "33333333-3333-3333-3333-333333333333";
+  vi.stubGlobal("fetch", async () =>
+    Response.json({
+      recordings: [
+        {
+          id: mbid,
+          title: "Approved title",
+          "artist-credit": [{ name: "Approved artist" }],
+        },
+      ],
+    }),
+  );
+  const [suggestion] = (await service.dispatch("lookup.search", {
+    id: track.id,
+  })) as {
+    token: string;
+    title: string;
+    artist: string;
+    origin: string;
+    license: string;
+  }[];
+  expect(suggestion).toMatchObject({
+    origin: `musicbrainz:${mbid}`,
+    license: "CC0 core metadata",
+  });
+  await expect(
+    service.dispatch("tracks.edit", {
+      ids: [track.id],
+      changes: { title: "Forged value" },
+      lookupSources: { title: suggestion.token },
+    }),
+  ).rejects.toThrow("does not match");
+  await expect(
+    service.dispatch("lookup.apply", {
+      id: track.id,
+      changes: { title: "Approved title" },
+    }),
+  ).rejects.toThrow();
+  await service.dispatch("tracks.edit", {
+    ids: [track.id],
+    changes: { title: suggestion.title, artist: "User artist" },
+    lookupSources: { title: suggestion.token },
+  });
+  let updated = (await service.snapshot()).tracks[0];
+  expect(updated.origins).toMatchObject({
+    title: `musicbrainz:${mbid}`,
+    artist: "user",
+  });
+  expect((await parseFile(updated.path)).common.title).toBe("Approved title");
+  await service.dispatch("tracks.undo", { ids: [track.id] });
+  updated = (await service.snapshot()).tracks[0];
+  expect(updated.origins.title).toBe(track.origins.title);
+  await service.dispatch("tracks.edit", {
+    ids: [track.id],
+    changes: { title: "Locked title" },
+    locks: ["title"],
+  });
+  await service.dispatch("lookup.apply", {
+    id: track.id,
+    token: suggestion.token,
+    changes: { title: suggestion.title, artist: suggestion.artist },
+  });
+  updated = (await service.snapshot()).tracks[0];
+  expect(updated.metadata.title).toBe("Locked title");
+  expect(updated.origins).toMatchObject({
+    title: "user",
+    artist: `musicbrainz:${mbid}`,
+  });
+}, 120000);
+
+it("falls back only for missing 1200px art and keeps the applied image within 1200px", async () => {
+  const { service } = await fixture();
+  await service.dispatch("settings.update", { onlineAcknowledged: true });
+  const image = await sharp({
+    create: { width: 1800, height: 1400, channels: 3, background: "#778899" },
+  })
+    .jpeg()
+    .toBuffer();
+  const fetch = vi.fn<typeof globalThis.fetch>(async (url) =>
+    String(url).endsWith("front-1200")
+      ? new Response(null, { status: 404 })
+      : new Response(image, { headers: { "content-type": "image/jpeg" } }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const releaseId = "44444444-4444-4444-4444-444444444444";
+  const result = (await service.dispatch("lookup.artworkPreview", {
+    releaseId,
+  })) as { origin: string; preview: string };
+  expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
+    `https://coverartarchive.org/release/${releaseId}/front-1200`,
+    `https://coverartarchive.org/release/${releaseId}/front-500`,
+  ]);
+  expect(result.origin).toBe(`coverartarchive:${releaseId}`);
+  const size = await sharp(
+    Buffer.from(result.preview.split(",")[1], "base64"),
+  ).metadata();
+  expect(size.width).toBeLessThanOrEqual(1200);
+  expect(size.height).toBeLessThanOrEqual(1200);
+  await service.dispatch("settings.update", {
+    metadataServices: { coverArtArchive: false },
+  });
+  await expect(
+    service.dispatch("lookup.artworkPreview", { releaseId }),
+  ).rejects.toThrow("disabled");
+  expect(fetch).toHaveBeenCalledTimes(2);
 }, 120000);

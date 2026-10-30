@@ -36,3 +36,33 @@ No public release has been approved by this document. Before distribution,
 audit the exact packaged binaries and their dependency/source arrangements,
 including PyInstaller dependencies. The release workflow must not turn an
 unresolved licensing gate into an implied approval.
+
+## Data sources and online services
+
+These notices cover data/services separately from bundled software. The MIT
+license on TuneVault does not relicense provider data, images, music or trademarks.
+Lookups are requested by the user and reviewed before applying; there is no
+automatic metadata enrichment.
+
+| Service / source                                 | Use, attribution and applicable terms                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MusicBrainz / MetaBrainz                         | Primary metadata suggestions. [MusicBrainz core database data is CC0; supplementary data is CC BY-NC-SA 3.0](https://musicbrainz.org/doc/About/Data_License). Do not treat tags/genres or every API field as CC0. Applied fields identify the source as `musicbrainz:<recording-mbid>`. [API rate limits](https://musicbrainz.org/doc/MusicBrainz_API/Rate_Limiting) and [MetaBrainz privacy](https://metabrainz.org/privacy) apply                                                                           |
+| Cover Art Archive / Internet Archive             | User-requested release artwork, up to 1200px, with `coverartarchive:<release-mbid>` provenance. [Images are copyrighted by their respective owners](https://coverartarchive.org/); the metadata license does not cover images or grant embedding/export permission. [API](https://musicbrainz.org/doc/Cover_Art_Archive/API) and [Archive terms/privacy](https://archive.org/about/terms)                                                                                                                     |
+| AcoustID / Chromaprint (unavailable integration) | No fingerprint requests are sent and no operational fingerprint feature is claimed. Registered application key and verified bundled fingerprint tool are prerequisites. [AcoustID API conditions](https://acoustid.org/webservice): free service for noncommercial use, maximum three requests/second. [Chromaprint](https://acoustid.org/chromaprint) is separate software; its exact binary/source/dependency licenses require review before bundling. An app preference alone does not satisfy these gates |
+| YouTube / Google                                 | Requested source discovery and authorized audio acquisition, not a metadata fallback. [YouTube terms](https://www.youtube.com/t/terms) and [Google privacy](https://policies.google.com/privacy) apply. yt-dlp software licensing does not grant recording or service-access rights                                                                                                                                                                                                                           |
+| GitHub                                           | Release/update distribution and public Issues support. [Terms](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service), [privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement). Artifact requests may redirect to GitHub-controlled download hosts                                                                                                                                                                                          |
+| Spotify / Apple Music references                 | Locally imported playlist references only; direct connectors and subscription-audio extraction are unavailable. File import grants no music, metadata or artwork rights                                                                                                                                                                                                                                                                                                                                       |
+| External browser links / iMazing                 | Opened only at the user's request under browser and destination-service conditions. External-tool handoff does not prove a device transfer                                                                                                                                                                                                                                                                                                                                                                    |
+
+Settings > Metadata & artwork controls online metadata and individual services;
+it does not disable YouTube, independent update requests or browser links.
+MusicBrainz/CAA request headers identify TuneVault's version and repository
+contact URL. Search results may be reused for seven days and artwork cache
+entries for 24 hours; expiry does not automatically delete persisted cache
+records/files, approved artwork, revisions or backups. See the Privacy Policy
+for destinations, information sent and independent controls.
+
+Research-only alternatives (iTunes Search, Deezer, Discogs, Last.fm,
+TheAudioDB, Wikidata and Spotify metadata APIs) are not enabled or attributed
+as TuneVault data sources. No affiliation or endorsement by any listed provider
+is asserted.

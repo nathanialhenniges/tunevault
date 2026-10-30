@@ -413,9 +413,24 @@ describe("actual bundled media processing", () => {
     expect(edited.metadata.title).toBe("Changed");
     expect(edited.locks).toEqual(["title"]);
     expect(edited.revision).toBe(2);
+    await service.dispatch("settings.update", { onlineAcknowledged: true });
+    vi.stubGlobal("fetch", async () =>
+      Response.json({
+        recordings: [
+          {
+            id: "11111111-1111-1111-1111-111111111111",
+            title: "Cannot overwrite locked",
+          },
+        ],
+      }),
+    );
+    const [suggestion] = (await service.dispatch("lookup.search", {
+      id: track.id,
+    })) as { token: string }[];
     await service.dispatch("lookup.apply", {
       id: track.id,
       changes: { title: "Cannot overwrite locked" },
+      token: suggestion.token,
     });
     expect((await service.snapshot()).tracks[0].metadata.title).toBe("Changed");
     const preview = (await service.dispatch("import.preview", {

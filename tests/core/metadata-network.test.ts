@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import sharp from "sharp";
+import { version } from "../../package.json";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -43,7 +44,7 @@ it("shares MusicBrainz/CAA pacing, preserves the User-Agent and caches validated
   expect(
     calls.every(
       (call) =>
-        call.agent.includes("TuneVault/4.0.0") &&
+        call.agent.includes(`TuneVault/${version}`) &&
         call.agent.includes("github.com/nathanialhenniges/tunevault"),
     ),
   ).toBe(true);
@@ -53,6 +54,113 @@ it("shares MusicBrainz/CAA pacing, preserves the User-Agent and caches validated
     JSON.parse((await fetchBounded(metadata, 1000)).bytes.toString()),
   ).toEqual({ recordings: [] });
   expect(calls).toHaveLength(2);
+});
+
+it("rechecks service policy before cached results and after a queued wait", async () => {
+  vi.resetModules();
+  const { fetchBounded } = await import("../../src/core/network");
+  vi.useFakeTimers();
+  const fetch = vi.fn(async () => Response.json({ recordings: [] }));
+  vi.stubGlobal("fetch", fetch);
+  let enabled = true;
+  const policy = () => {
+    if (!enabled) throw new Error("Metadata disabled");
+  };
+  const url = new URL("https://musicbrainz.org/ws/2/recording/?query=policy");
+  const first = fetchBounded(url, 1000, false, undefined, policy);
+  await vi.advanceTimersByTimeAsync(1);
+  await first;
+  enabled = false;
+  await expect(
+    fetchBounded(url, 1000, false, undefined, policy),
+  ).rejects.toThrow("Metadata disabled");
+  enabled = true;
+  const queued = expect(
+    fetchBounded(new URL(url.href + "-queued"), 1000, false, undefined, policy),
+  ).rejects.toThrow("Metadata disabled");
+  await vi.advanceTimersByTimeAsync(1);
+  enabled = false;
+  await vi.advanceTimersByTimeAsync(1200);
+  await queued;
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("checks redirect policies and rejects cross-service or JSON archive requests", async () => {
+  vi.resetModules();
+  const { fetchBounded } = await import("../../src/core/network");
+  vi.useFakeTimers();
+  const fetch = vi.fn(
+    async () =>
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://ia800000.us.archive.org/cover.jpg" },
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const policy = vi.fn((url: URL) => {
+    if (url.hostname.endsWith(".archive.org"))
+      throw new Error("Artwork disabled during redirect");
+  });
+  const redirected = expect(
+    fetchBounded(
+      new URL("https://coverartarchive.org/release/fixture/front-1200"),
+      1000,
+      true,
+      undefined,
+      policy,
+    ),
+  ).rejects.toThrow("Artwork disabled during redirect");
+  await vi.advanceTimersByTimeAsync(1);
+  await redirected;
+  expect(policy).toHaveBeenCalledWith(
+    new URL("https://ia800000.us.archive.org/cover.jpg"),
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await expect(
+    fetchBounded(new URL("https://archive.org/private"), 1000),
+  ).rejects.toThrow("Untrusted");
+  await expect(
+    fetchBounded(new URL("https://musicbrainz.org/image"), 1000, true),
+  ).rejects.toThrow("Untrusted");
+});
+
+it("does not cache a response when its service is disabled while reading the body", async () => {
+  vi.resetModules();
+  const { fetchBounded } = await import("../../src/core/network");
+  vi.useFakeTimers();
+  let enabled = true;
+  const policy = () => {
+    if (!enabled) throw new Error("Metadata disabled while reading");
+  };
+  const fetch = vi.fn(
+    async () =>
+      new Response(
+        new ReadableStream({
+          pull(controller) {
+            enabled = false;
+            controller.enqueue(new TextEncoder().encode('{"recordings":[]}'));
+            controller.close();
+          },
+        }),
+      ),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const url = new URL(
+    "https://musicbrainz.org/ws/2/recording/?query=body-policy",
+  );
+  const disabled = expect(
+    fetchBounded(url, 1000, false, undefined, policy),
+  ).rejects.toThrow("Metadata disabled while reading");
+  await vi.advanceTimersByTimeAsync(1);
+  await disabled;
+  enabled = true;
+  fetch.mockImplementation(async () => Response.json({ recordings: [] }));
+  const retry = fetchBounded(url, 1000, false, undefined, policy);
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(JSON.parse((await retry).bytes.toString())).toEqual({
+    recordings: [],
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
 
 it("backs off on 503/429, respects Retry-After and allows cancellation during shared backoff", async () => {
