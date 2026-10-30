@@ -252,6 +252,11 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
       (await page.evaluate(() => window.tunevault.invoke("snapshot"))).tracks[0]
         .artworkOrigin,
     ).toBe("locally-generated-placeholder");
+    await expect(
+      page.getByText("Artwork origin: locally-generated-placeholder", {
+        exact: true,
+      }),
+    ).toBeVisible();
     await page
       .getByRole("button", { name: "Undo previous revision", exact: true })
       .click();
@@ -262,6 +267,11 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
             .tracks[0].artwork,
       )
       .toBeNull();
+    await expect(
+      page.getByText("Artwork origin: locally-generated-placeholder", {
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await page
       .getByLabel("Title", { exact: true })
       .fill("Unsaved theme-test draft");

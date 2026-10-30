@@ -2,6 +2,7 @@ import { _electron, test, expect } from "@playwright/test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { launch, choose, openSettings, capture, close } from "./launch";
 
 test.skip(
@@ -11,11 +12,9 @@ test.skip(
 test("development update preview is manual, local, and cannot install", async () => {
   const root = await mkdtemp(join(tmpdir(), "tunevault-dev-updates-"));
   const app = await _electron.launch({
-    executablePath: resolve(
-      process.platform === "darwin"
-        ? "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-        : "node_modules/electron/dist/electron.exe",
-    ),
+    executablePath: createRequire(resolve("package.json"))(
+      "electron",
+    ) as string,
     args: [resolve(".")],
     env: {
       ...process.env,

@@ -14,7 +14,7 @@ Compatible MP3 audio is copied/remuxed rather than repeatedly lossy encoded.
 MP3 uses ID3v2.3, M4A uses container metadata and FLAC uses its own tags/art.
 FFmpeg output is independently checked with ffprobe and music-metadata.
 The older-player artwork baseline is RGB JPEG, 600 px/500 KB, pending hardware
-proof. Profiles remain Baseline until the user records model/firmware testing.
+proof. Profiles remain Untested until the user records model/firmware testing.
 
 Relative M3U8 files preserve occurrence order, including repeated tracks.
 Unavailable and skipped entries appear in the omission report. A partial

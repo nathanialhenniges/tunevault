@@ -4,10 +4,36 @@ Implementation run: 2026-10-29–30. Evidence levels below are deliberately sepa
 This file records executed checks, not a promise that every acceptance item has
 passed. Final platform CI and review results are appended as they become known.
 
+## Current local acceptance audit (2026-10-30)
+
+- Typecheck, lint and 169 unit/integration tests passed after cancellation and
+  restore-safety fixes. Eight E2E tests passed, including the real unpackaged
+  Electron development preview and the packaged production application.
+- The current Mac ARM64 package passed bundled-tool, updater configuration,
+  notice and native-icon verification. Installed-upgrade fixtures run separately
+  in native CI; the skipped local installed test is not an upgrade pass.
+- Source cancellation now covers the initial provider-preview subprocess and
+  blocks late playlist writes. Restore rejects malformed records, broken links
+  and changed same-path media before replacing existing state; safe preference
+  restoration cannot grant permissions or switch the current Library folder.
+- Ordered export filenames now remain sortable at 10,000 songs and beyond.
+- The latest 10,000-track local fixture measured 2.92 seconds to startup,
+  20.5 ms search and 56.3 ms paging/scroll, with 100 rendered rows at 200% zoom
+  on the available Mac ARM64 host. These are observations, not minimum-OS proof.
+- A live MusicBrainz request using only a synthetic title/artist query passed
+  through the production bounded request code. This does not verify live CAA
+  artwork, YouTube acquisition or provider permission for any media.
+- Original supplied logo, six demo covers and cover manifest matched their
+  research-source bytes. No provenance was stripped.
+- Native CI found a missing development Electron executable and an E2E race
+  with the preceding artwork undo. The tests now use Electron's official lazy
+  loader and wait for the rendered undo state. A fresh native run must verify
+  those fixes on both advertised platforms.
+
 ## Source and real file processing
 
 - TypeScript and source/test ESLint passed.
-- 120 unit/integration tests passed in the latest completed local suite: SQLite/settings, native file grants,
+- An earlier 120-test unit/integration suite passed: SQLite/settings, native file grants,
   credential storage/cleanup contract, reference occurrence order/refresh,
   safe paths, chapter parsing, target identity/history, backup/revision restore,
   acquisition failure/retry/cancel with controlled provider fixtures, updater
@@ -113,8 +139,10 @@ and the reduced native CI matrix still require their new CI run.
   copy checks do not establish playback or iPod playlist order.
 - Owner production update public key, protected signing secret/environments
   and corresponding-source/legal review. No production key was invented.
-- Publishable-prose hygiene: the required local remove-ai-marks service returned
-  an empty reply on /health. No cleaning or local fallback was performed.
+- Publishable-prose hygiene: the default local remove-ai-marks endpoint uses
+  port 8765, currently owned by WolfWave, and no alternate endpoint is configured.
+  Health checks returned an empty reply; that is not a working hygiene service.
+  WolfWave was not changed. No cleaning or local fallback was performed.
   Supplied art provenance was intentionally left untouched.
 
 No release, tag or GitHub setting change is authorized by these results.

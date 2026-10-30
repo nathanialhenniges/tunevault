@@ -65,6 +65,7 @@ import {
 } from "./references";
 import { verifyTools } from "../update/tools";
 import { fetchBounded } from "./network";
+import { restoredPreferences, validateBackupIndex } from "./backup-validation";
 const tables = [
   "tracks",
   "playlists",
@@ -755,7 +756,12 @@ export class LibraryService {
           throw new Error(
             "Relink requires the exact recorded content hash; import a different recording separately",
           );
-        const dest = await this.archiveCopy(file, track.id, path.extname(file));
+        const dest = await this.archiveCopy(
+          file,
+          track.id,
+          path.extname(file),
+          info.hash,
+        );
         this.save("tracks", { ...track, path: dest, missing: false });
         return this.snapshot();
       }
@@ -1349,6 +1355,7 @@ export class LibraryService {
     source: string,
     id: string,
     ext: string,
+    expectedHash: string,
   ): Promise<string> {
     if (!/^\.[a-z0-9]{1,8}$/i.test(ext))
       throw new Error("Unsupported audio extension");
@@ -1360,7 +1367,7 @@ export class LibraryService {
     const temp = dest + "." + randomUUID() + ".partial";
     try {
       await copyFile(source, temp);
-      if ((await hashFile(source)) !== (await hashFile(temp)))
+      if (expectedHash !== (await hashFile(temp)))
         throw new Error("Import copy hash mismatch");
       await rename(temp, dest);
       return dest;
@@ -1566,7 +1573,12 @@ export class LibraryService {
           )
         ) {
           const id = randomUUID(),
-            dest = await this.archiveCopy(source, id, path.extname(source));
+            dest = await this.archiveCopy(
+              source,
+              id,
+              path.extname(source),
+              info.hash,
+            );
           const originalArt = await confined(
             this.requireVault(),
             `artwork/embedded-original-${id}.image`,
@@ -1643,7 +1655,14 @@ export class LibraryService {
       "2",
     ];
   }
-  private async sourcePreview(url: string): Promise<ProviderPreview> {
+  private async sourcePreview(
+    url: string,
+    jobSignal?: AbortSignal,
+  ): Promise<ProviderPreview> {
+    const signal = jobSignal
+      ? AbortSignal.any([this.toolsAbort.signal, jobSignal])
+      : this.toolsAbort.signal;
+    signal.throwIfAborted();
     let parsed: URL;
     try {
       parsed = new URL(url);
@@ -1669,15 +1688,20 @@ export class LibraryService {
       tools = await this.tools();
     try {
       const raw = JSON.parse(
-        await run(tools["yt-dlp"], [
-          ...this.ytArgs(tools),
-          "--dump-single-json",
-          "--flat-playlist",
-          "--skip-download",
-          "--",
-          canonical,
-        ]),
+        await run(
+          tools["yt-dlp"],
+          [
+            ...this.ytArgs(tools),
+            "--dump-single-json",
+            "--flat-playlist",
+            "--skip-download",
+            "--",
+            canonical,
+          ],
+          signal,
+        ),
       );
+      signal.throwIfAborted();
       const entries = raw.entries || [raw];
       if (entries.length > 10000)
         throw new Error("Playlist exceeds the 10,000 occurrence limit");
@@ -1726,7 +1750,8 @@ export class LibraryService {
   private async downloadJob(job: Job, signal: AbortSignal) {
     const preview =
       (job.payload.sourceSnapshot as ProviderPreview) ||
-      (await this.sourcePreview(String(job.payload.url)));
+      (await this.sourcePreview(String(job.payload.url), signal));
+    signal.throwIfAborted();
     if (!preview.complete) throw new Error(preview.explanation);
     if (job.payload.occurrenceId && preview.references.length !== 1)
       throw new Error("Choose one exact source URL for a playlist occurrence");
@@ -1885,6 +1910,7 @@ export class LibraryService {
                 downloaded,
                 id,
                 path.extname(downloaded),
+                inspected.hash,
               );
             const metadata = normalizeMetadata({
               ...inspected.metadata,
@@ -2423,7 +2449,13 @@ export class LibraryService {
           target.destination,
           target.id,
           "0".repeat(36),
-          this.exportName(track, ordinal + 1, target.profile, parent),
+          this.exportName(
+            track,
+            ordinal + 1,
+            target.profile,
+            parent,
+            selection.entries.length,
+          ),
           target.profile,
         );
       } catch (error) {
@@ -2472,8 +2504,9 @@ export class LibraryService {
     ordinal: number,
     profile: Profile,
     parent: string,
+    count = 0,
   ): string {
-    const prefix = `${String(ordinal).padStart(4, "0")} - `,
+    const prefix = `${String(ordinal).padStart(Math.max(4, String(count).length), "0")} - `,
       suffix = extension(track, profile.format);
     const limit = Math.min(
       profile.filenameLimit ?? 120,
@@ -2689,6 +2722,7 @@ export class LibraryService {
           i + 1,
           target.profile,
           batchDirectory,
+          selected.entries.length,
         );
         let dest = await this.exportPath(
           destinationRoot,
@@ -3299,22 +3333,12 @@ export class LibraryService {
         throw new Error("Corrupt backup index");
     if (!Array.isArray(bundle.revisions) || bundle.revisions.length > 100000)
       throw new Error("Invalid revision history");
-    const revisionIds = new Set<string>();
-    for (const revision of bundle.revisions) {
-      text(revision.id, 100);
-      text(revision.trackId, 100);
-      if (revisionIds.has(revision.id))
-        throw new Error("Duplicate revision identity");
-      revisionIds.add(revision.id);
-      object(revision.track);
-    }
-    const seen = new Set<string>();
-    for (const track of snapshot.tracks) {
-      text(track.id, 100);
-      if (seen.has(track.id))
-        throw new Error("Duplicate track identity in backup");
-      seen.add(track.id);
-    }
+    const seen = validateBackupIndex(snapshot, bundle.revisions);
+    const settingsToRestore = restoredPreferences(
+      snapshot.settings,
+      this.settings(),
+      seen,
+    );
     for (const track of [
       ...snapshot.tracks,
       ...bundle.revisions.map((r: any) => r.track),
@@ -3363,6 +3387,14 @@ export class LibraryService {
             `.missing/${track.id}${/^\.[a-z0-9]{1,8}$/i.test(path.extname(track.path)) ? path.extname(track.path) : ".audio"}`,
           );
         }
+        if (
+          existsSync(track.path) &&
+          (!(await stat(track.path)).isFile() ||
+            (await hashFile(track.path)) !== track.hash)
+        )
+          throw new Error(
+            "Existing media differs from the metadata backup; restore matching media or relink before restoring",
+          );
         for (const field of ["artwork", "artworkOriginal"] as const) {
           if (!track[field]) continue;
           try {
@@ -3406,6 +3438,7 @@ export class LibraryService {
           track.path,
           track.id + "-restored-" + randomUUID(),
           path.extname(track.path),
+          track.hash,
         );
         track.path = dest;
         if (track.artwork)
@@ -3460,16 +3493,7 @@ export class LibraryService {
           message:
             "Historical job restored; select its source again to run a new job",
         });
-      const settings = this.settings();
-      this.saveSettings({
-        ...settings,
-        appearance: ["system", "light", "dark"].includes(
-          snapshot.settings?.appearance,
-        )
-          ? snapshot.settings.appearance
-          : "system",
-        accent: snapshot.settings?.accent === "orange" ? "orange" : "blue",
-      });
+      this.saveSettings(settingsToRestore);
     });
     return {
       restored: restoredTracks.length,

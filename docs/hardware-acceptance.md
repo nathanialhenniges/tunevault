@@ -10,7 +10,7 @@ tests. Use owned or generated synthetic audio, not an unlicensed live fixture.
 - [ ] Mark only that checked batch transferred; another target remains pending.
 - [ ] For generic USB, record model/firmware and test its actual codecs,
       playlist encoding/order and artwork limits. A verified copy proves bytes,
-      not playback. Keep compatibility Baseline until actual tests are recorded.
+      not playback. Keep compatibility Untested until actual tests are recorded.
 - [ ] Android/MTP uses folder handoff unless a real native transport is tested.
 
 No video, DRM bypass or private iOS-library manipulation is in scope.

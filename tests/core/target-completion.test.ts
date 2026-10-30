@@ -216,6 +216,17 @@ it("requires explicit physical test results and invalidates them when the output
   });
 }, 120000);
 
+it("keeps filename sorting in occurrence order across the 10,000-song boundary", async () => {
+  const { service, target, destination } = await fixture();
+  const track = (await service.snapshot()).tracks[0];
+  for (const count of [10000, 100000]) {
+    const names = [1, 9999, 10000, count].map((ordinal) =>
+      service["exportName"](track, ordinal, target.profile, destination, count),
+    );
+    expect([...names].sort()).toEqual(names);
+  }
+});
+
 it("writes configured MP3 tags, bounded Unicode filenames, CRLF playlists and distinct occurrence-only ordering tags", async () => {
   const { service, target } = await fixture();
   const trackId = (await service.snapshot()).tracks[0].id;

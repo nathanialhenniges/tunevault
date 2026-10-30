@@ -28,6 +28,19 @@ selected vault. Paths outside that root are treated as missing and require an
 explicit relink; a backup cannot grant read access to arbitrary local files.
 Artwork is bounded and validated before it is served to the renderer.
 
+Restore validates complete playlist, target/profile, receipt, job and track
+records, including duplicate identities and links, before creating recovery
+copies or replacing the index. A metadata-only backup must match the SHA-256
+hash of any existing media at its recorded location. Changed audio is rejected
+rather than silently attached to an older recording identity; genuinely missing
+media remains missing and can be relinked.
+
+Safe preferences such as appearance, view, selected tracks and metadata service
+choices are restored. The current Library folder, network acknowledgement,
+disclaimer acceptance and onboarding permissions are preserved; a backup cannot
+grant them. Selections are restricted to restored tracks and obsolete service
+preferences are ignored.
+
 Backup and restore exclude concurrent index writes and queued/running media
 work. New bundles omit duplicate library data and must satisfy the same size
 and record-count bounds as Restore before they are reported successful.
