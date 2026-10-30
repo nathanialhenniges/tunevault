@@ -419,7 +419,13 @@ export async function writeMedia(
     args.push("-metadata", `${tagNames[field] || field}=${val}`);
     args.push("-metadata:s:a:0", `${tagNames[field] || field}=${val}`);
   }
-  if (ext === ".mp3") args.push("-id3v2_version", "3", "-write_id3v1", "0");
+  if (ext === ".mp3")
+    args.push(
+      "-id3v2_version",
+      String(profile?.mp3TagVersion ?? 3),
+      "-write_id3v1",
+      "0",
+    );
   if (ext === ".m4a") args.push("-movflags", "+faststart");
   args.push("-y", destination);
   await run(tools.ffmpeg, args, signal);
@@ -445,14 +451,21 @@ export async function writeMedia(
         file.tag.pictures = [Picture.fromPath(track.artwork)];
       if ([".mp3", ".wav", ".aiff", ".aif", ".aac"].includes(ext)) {
         const tag = file.getTag(TagTypes.Id3v2, true) as Id3v2Tag;
-        tag.version = 3;
-        tag.setTextFrame(Id3v2FrameIdentifiers.TYER, metadata.date.slice(0, 4));
-        tag.setTextFrame(
-          Id3v2FrameIdentifiers.TDAT,
-          /^\d{4}-\d{2}-\d{2}$/.test(metadata.date)
-            ? metadata.date.slice(8, 10) + metadata.date.slice(5, 7)
-            : "",
-        );
+        tag.version = ext === ".mp3" ? (profile?.mp3TagVersion ?? 3) : 3;
+        if (tag.version === 4)
+          tag.setTextFrame(Id3v2FrameIdentifiers.TDRC, metadata.date);
+        else {
+          tag.setTextFrame(
+            Id3v2FrameIdentifiers.TYER,
+            metadata.date.slice(0, 4),
+          );
+          tag.setTextFrame(
+            Id3v2FrameIdentifiers.TDAT,
+            /^\d{4}-\d{2}-\d{2}$/.test(metadata.date)
+              ? metadata.date.slice(8, 10) + metadata.date.slice(5, 7)
+              : "",
+          );
+        }
         for (const frame of tag.frames)
           if (
             frame instanceof Id3v2UserTextInformationFrame &&
@@ -460,7 +473,7 @@ export async function writeMedia(
           )
             tag.removeFrame(frame);
         // ID3v2.3 cannot express month-only precision in its standard date frames.
-        if (/^\d{4}-\d{2}$/.test(metadata.date)) {
+        if (tag.version === 3 && /^\d{4}-\d{2}$/.test(metadata.date)) {
           const date =
             Id3v2UserTextInformationFrame.fromDescription("TUNEVAULT_DATE");
           date.text = [metadata.date];

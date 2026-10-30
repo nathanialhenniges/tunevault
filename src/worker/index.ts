@@ -28,6 +28,10 @@ port.on("message", async ({ data }: { data: any }) => {
         ![
           "snapshot",
           "artwork.get",
+          "artwork.placeholderPreview",
+          "lookup.cancel",
+          "lookup.artworkPreview",
+          "artwork.preview",
           "import.preview",
           "export.preview",
           "source.preview",

@@ -179,6 +179,22 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
     );
     expect(exported.receipts).toHaveLength(1);
     expect(exported.receipts[0].evidence).toBe("exported");
+    await app.evaluate(({ shell }) => {
+      shell.showItemInFolder = (path) => {
+        (globalThis as any).__revealedBatch = path;
+      };
+    });
+    await page.evaluate(
+      ({ targetId, batchId }) =>
+        window.tunevault.invoke("reveal", { targetId, batchId }),
+      {
+        targetId: exported.receipts[0].targetId,
+        batchId: exported.receipts[0].batchId,
+      },
+    );
+    expect(await app.evaluate(() => (globalThis as any).__revealedBatch)).toBe(
+      exported.jobs.find((job: any) => job.id === queued.id).payload.path,
+    );
     const report = await page.evaluate(() =>
       window.tunevault.invoke("diagnostics.preview"),
     );
@@ -205,6 +221,39 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
       .first()
       .click();
     await page.locator("button.track-name").first().click();
+    await page
+      .locator("summary")
+      .filter({ hasText: /^Artwork$/ })
+      .click();
+    await page
+      .getByRole("button", {
+        name: "Generate offline placeholder…",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Review placeholder artwork" }),
+    ).toContainText("Locally generated");
+    await page
+      .getByRole("button", { name: "Apply selected artwork", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Review placeholder artwork" }),
+    ).toHaveCount(0);
+    expect(
+      (await page.evaluate(() => window.tunevault.invoke("snapshot"))).tracks[0]
+        .artworkOrigin,
+    ).toBe("locally-generated-placeholder");
+    await page
+      .getByRole("button", { name: "Undo previous revision", exact: true })
+      .click();
+    await expect
+      .poll(
+        async () =>
+          (await page.evaluate(() => window.tunevault.invoke("snapshot")))
+            .tracks[0].artwork,
+      )
+      .toBeNull();
     await page
       .getByLabel("Title", { exact: true })
       .fill("Unsaved theme-test draft");

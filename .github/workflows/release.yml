@@ -34,6 +34,7 @@ jobs:
         run: node scripts/stage-release.mjs
         env:
           RELEASE_NOTES: ${{ inputs.notes }}
+          RELEASE_SOURCE_REVIEW_JSON: ${{ secrets.RELEASE_SOURCE_REVIEW_JSON }}
       - name: Sign exact envelope bytes with protected release key
         run: node scripts/release-envelope.mjs
         env:

@@ -20,7 +20,7 @@ const transports: Record<Transport, string> = {
 };
 const formats: Record<Format, string> = {
   original: "Original available format",
-  mp3: "MP3 · 192 kbps · ID3v2.3",
+  mp3: "MP3",
   aac: "AAC-LC · M4A",
   alac: "Apple Lossless · M4A",
   flac: "FLAC · source quality retained",
@@ -135,11 +135,36 @@ export default function Devices({
                       : "Destination unavailable / disconnected"}
                   </dd>
                   <dt>Audio profile</dt>
-                  <dd>{formats[target.profile.format]}</dd>
+                  <dd>
+                    {formats[target.profile.format]}
+                    {target.profile.format === "mp3"
+                      ? ` · ID3v2.${target.profile.mp3TagVersion ?? 3} · ${target.profile.bitrate} kbps when conversion is needed`
+                      : ""}
+                  </dd>
                   <dt>Configured budget</dt>
                   <dd>
                     {target.budget ? bytes(target.budget) : "Not set"} · not
                     detected capacity
+                  </dd>
+                  <dt>Last observed destination capacity</dt>
+                  <dd>
+                    {target.lastCapacity ? (
+                      <>
+                        {bytes(target.lastCapacity.totalBytes)} total ·{" "}
+                        {bytes(target.lastCapacity.freeBytes)} free as of{" "}
+                        {new Date(
+                          target.lastCapacity.observedAt,
+                        ).toLocaleString()}
+                        . Historical filesystem observation, not current free
+                        space
+                        {target.transport === "imazing"
+                          ? " or iPod capacity"
+                          : ""}
+                        .
+                      </>
+                    ) : (
+                      "Not measured yet; open export preflight while the destination is connected."
+                    )}
                   </dd>
                 </dl>
                 {target.transport === "mtp" && (
@@ -186,7 +211,11 @@ export default function Devices({
                 ) : (
                   batches.map((batchId) => {
                     const rows = receipts.filter((r) => r.batchId === batchId);
-                    const first = rows[0];
+                    const first =
+                      rows.find((row) => row.evidence === "user-confirmed") ||
+                      rows[0];
+                    const uniqueTracks = new Set(rows.map((row) => row.trackId))
+                      .size;
                     const stale = rows.some((r) => {
                       const track = snapshot.tracks.find(
                         (t) => t.id === r.trackId,
@@ -210,13 +239,30 @@ export default function Devices({
                             </p>
                           )}
                           <p>
-                            {rows.length} unique track
-                            {rows.length === 1 ? "" : "s"} ·{" "}
+                            {uniqueTracks} unique track
+                            {uniqueTracks === 1 ? "" : "s"} ·{" "}
                             {new Date(first.createdAt).toLocaleString()}
                           </p>
                           <span className="small muted">
                             Batch {batchId.slice(0, 8)}
                           </span>
+                          <details>
+                            <summary>
+                              Evidence history · {rows.length} records
+                            </summary>
+                            <ul>
+                              {rows.map((row) => (
+                                <li key={row.id}>
+                                  {evidence[row.evidence]} ·{" "}
+                                  {snapshot.tracks.find(
+                                    (track) => track.id === row.trackId,
+                                  )?.metadata.title ||
+                                    "Archived recording"}{" "}
+                                  · {new Date(row.createdAt).toLocaleString()}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
                         </div>
                         <div className="button-row">
                           <button
@@ -253,7 +299,7 @@ export default function Devices({
             )}
             {tab === "compatibility" && (
               <Compatibility
-                key={target.id}
+                key={`${target.id}:${target.profile.revision}:${target.profile.compatibility}`}
                 target={target}
                 jobs={snapshot.jobs}
                 run={run}
@@ -557,6 +603,25 @@ function Compatibility({
   const [model, setModel] = useState(target.profile.model),
     [firmware, setFirmware] = useState(target.profile.firmware),
     [format, setFormat] = useState<Format>(target.profile.format),
+    [bitrate, setBitrate] = useState(target.profile.bitrate),
+    [sampleRate, setSampleRate] = useState(target.profile.sampleRate),
+    [artworkSize, setArtworkSize] = useState(target.profile.artworkSize),
+    [artworkBytes, setArtworkBytes] = useState(target.profile.artworkBytes),
+    [mp3TagVersion, setMp3TagVersion] = useState<3 | 4>(
+      target.profile.mp3TagVersion ?? 3,
+    ),
+    [filenameLimit, setFilenameLimit] = useState(
+      target.profile.filenameLimit ?? 120,
+    ),
+    [pathLimit, setPathLimit] = useState(target.profile.pathLimit ?? 240),
+    [playlistNewline, setPlaylistNewline] = useState<"LF" | "CRLF">(
+      target.profile.playlistNewline ?? "LF",
+    ),
+    [orderTags, setOrderTags] = useState(target.profile.orderTags ?? false),
+    [tested, setTested] = useState(
+      target.profile.compatibility === "User-tested",
+    ),
+    [testResults, setTestResults] = useState(target.profile.testResults || ""),
     [legacy, setLegacy] = useState(target.profile.legacyPlaylist),
     [queuedTest, setQueuedTest] = useState<Job | null>(null),
     [testBusy, setTestBusy] = useState(false),
@@ -631,13 +696,24 @@ function Compatibility({
       <div className="form-grid">
         <label className="field">
           Model
-          <input value={model} onChange={(e) => setModel(e.target.value)} />
+          <input
+            value={model}
+            onChange={(e) => {
+              setModel(e.target.value);
+              setTested(false);
+              setTestResults("");
+            }}
+          />
         </label>
         <label className="field">
           Firmware / iOS version
           <input
             value={firmware}
-            onChange={(e) => setFirmware(e.target.value)}
+            onChange={(e) => {
+              setFirmware(e.target.value);
+              setTested(false);
+              setTestResults("");
+            }}
           />
         </label>
       </div>
@@ -666,18 +742,122 @@ function Compatibility({
       </p>
       <details>
         <summary>Advanced profile</summary>
-        <dl className="property-list">
-          <dt>Sample rate</dt>
-          <dd>{target.profile.sampleRate} Hz when conversion is required</dd>
-          <dt>Artwork cap</dt>
-          <dd>
-            {target.profile.artworkSize}px /{" "}
-            {bytes(target.profile.artworkBytes)} · proposed older-player
-            baseline
-          </dd>
-          <dt>Profile revision</dt>
-          <dd>{target.profile.revision}</dd>
-        </dl>
+        <div className="form-grid">
+          <label className="field">
+            MP3 tag version
+            <select
+              value={mp3TagVersion}
+              onChange={(e) =>
+                setMp3TagVersion(Number(e.target.value) as 3 | 4)
+              }
+            >
+              <option value={3}>ID3v2.3 · older-player baseline</option>
+              <option value={4}>ID3v2.4 · test your player</option>
+            </select>
+          </label>
+          <label className="field">
+            Maximum filename (UTF-8 bytes)
+            <input
+              type="number"
+              min={80}
+              max={180}
+              value={filenameLimit}
+              onChange={(e) => setFilenameLimit(Number(e.target.value))}
+            />
+          </label>
+          <label className="field">
+            Maximum complete path (UTF-8 bytes)
+            <input
+              type="number"
+              min={180}
+              max={1024}
+              value={pathLimit}
+              onChange={(e) => setPathLimit(Number(e.target.value))}
+            />
+          </label>
+          <label className="field">
+            Playlist line endings
+            <select
+              value={playlistNewline}
+              onChange={(e) =>
+                setPlaylistNewline(e.target.value as "LF" | "CRLF")
+              }
+            >
+              <option value="LF">LF</option>
+              <option value="CRLF">CRLF</option>
+            </select>
+          </label>
+          <label className="field">
+            Lossy bitrate (kbps)
+            <select
+              value={bitrate}
+              onChange={(e) => setBitrate(Number(e.target.value))}
+            >
+              {[128, 160, 192, 256, 320].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Conversion sample rate (Hz)
+            <select
+              value={sampleRate}
+              onChange={(e) => setSampleRate(Number(e.target.value))}
+            >
+              {[44100, 48000].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Maximum artwork dimension (px)
+            <input
+              type="number"
+              min={100}
+              max={1200}
+              value={artworkSize}
+              onChange={(e) => setArtworkSize(Number(e.target.value))}
+            />
+          </label>
+          <label className="field">
+            Maximum artwork bytes
+            <input
+              type="number"
+              min={10000}
+              max={2000000}
+              value={artworkBytes}
+              onChange={(e) => setArtworkBytes(Number(e.target.value))}
+            />
+          </label>
+        </div>
+        <p className="small muted">
+          Playlist encoding: UTF-8 (supported fixed format). Primary M3U8 uses
+          the selected line endings; optional legacy M3U uses CRLF. Byte limits
+          are conservative across platforms; a long destination can require a
+          higher path limit.
+        </p>
+        <label className="check-line">
+          <input
+            type="checkbox"
+            checked={orderTags}
+            onChange={(e) => setOrderTags(e.target.checked)}
+          />
+          Write playlist position/total into exported copies only
+        </label>
+        <p className="small muted">
+          Ordered copies get per-occurrence track numbers and disc 1/1. Archive
+          album numbers stay unchanged; these copies are not reused across
+          batches. Player ordering still needs a physical test.
+        </p>
+        <p className="small muted">
+          Bitrate/sample rate apply when conversion is needed. Compatible audio
+          is copied. Profile revision {target.profile.revision}; output changes
+          reset hardware compatibility to Baseline.
+        </p>
         <label className="check-line">
           <input
             type="checkbox"
@@ -687,6 +867,27 @@ function Compatibility({
           Also write a legacy M3U playlist
         </label>
       </details>
+      <label className="field">
+        Physical player test results
+        <textarea
+          value={testResults}
+          maxLength={4000}
+          onChange={(e) => setTestResults(e.target.value)}
+          placeholder="Record playback, seeking, non-ASCII tags, artwork and repeated A/B/A playlist order results."
+        />
+      </label>
+      <label className="check-line">
+        <input
+          type="checkbox"
+          checked={tested}
+          onChange={(e) => setTested(e.target.checked)}
+        />
+        I tested this saved profile on the named physical player and firmware.
+      </label>
+      <p className="small muted">
+        Save output changes first, then test that saved profile and record the
+        results. Preparing synthetic files alone is not a hardware test.
+      </p>
       <button
         onClick={() =>
           run("targets.update", {
@@ -695,6 +896,18 @@ function Compatibility({
               format,
               model,
               firmware,
+              bitrate,
+              sampleRate,
+              artworkSize,
+              artworkBytes,
+              mp3TagVersion,
+              filenameLimit,
+              pathLimit,
+              playlistEncoding: "utf8",
+              playlistNewline,
+              orderTags,
+              compatibility: tested ? "User-tested" : "Baseline",
+              testResults,
               legacyPlaylist: legacy,
             },
           })
@@ -960,7 +1173,13 @@ export function ExportDialog({
             </dd>
             <dt>Estimated output</dt>
             <dd>{bytes(plan.estimatedBytes)} · estimate, not a guarantee</dd>
-            <dt>Available space</dt>
+            <dt>Known verified existing audio</dt>
+            <dd>
+              {bytes(plan.knownBytes)} · selected occurrences already present
+            </dd>
+            <dt>Configured content budget</dt>
+            <dd>{plan.budget === null ? "Not set" : bytes(plan.budget)}</dd>
+            <dt>Current measured destination free space</dt>
             <dd>
               {plan.availableBytes === null
                 ? "Unavailable"

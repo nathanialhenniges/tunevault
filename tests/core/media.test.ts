@@ -118,6 +118,54 @@ async function complete(service: LibraryService, job: Job): Promise<Job> {
   throw new Error("Job did not complete");
 }
 describe("actual bundled media processing", () => {
+  it("expires approved mapping suggestions without detaching saved occurrences and ignores missing media", async () => {
+    const { root, service } = await fixture();
+    const source = await audio(root);
+    expect(
+      (
+        await complete(
+          service,
+          (await service.dispatch("import.start", { paths: [source] })) as Job,
+        )
+      ).status,
+    ).toBe("completed");
+    const track = (await service.snapshot()).tracks[0];
+    const input = {
+      format: "csv",
+      text: "Title,Artist\nReference,Reference artist",
+    };
+    const first = (await service.dispatch(
+      "references.import",
+      input,
+    )) as Playlist;
+    await service.dispatch("references.attach", {
+      playlistId: first.id,
+      occurrenceId: first.entries[0].id,
+      trackId: track.id,
+    });
+    expect(
+      ((await service.dispatch("references.import", input)) as Playlist)
+        .entries[0].trackId,
+    ).toBe(track.id);
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.now() + 31 * 24 * 60 * 60 * 1000);
+    expect(
+      ((await service.dispatch("references.import", input)) as Playlist)
+        .entries[0].trackId,
+    ).toBeNull();
+    expect(
+      (await service.snapshot()).playlists.find(
+        (playlist) => playlist.id === first.id,
+      )?.entries[0].trackId,
+    ).toBe(track.id);
+    clock.mockRestore();
+    await rm(track.path);
+    expect(
+      ((await service.dispatch("references.import", input)) as Playlist)
+        .entries[0].trackId,
+    ).toBeNull();
+  }, 120000);
   it("preserves unmodelled tags and original-resolution embedded artwork across a tag edit", async () => {
     const { root, service } = await fixture();
     const tone = await audio(root);
@@ -467,8 +515,8 @@ describe("actual bundled media processing", () => {
     expect(
       (await service.snapshot()).receipts
         .filter((r) => r.targetId === a.id)
-        .every((r) => r.evidence === "user-confirmed"),
-    ).toBe(true);
+        .filter((r) => r.evidence === "user-confirmed"),
+    ).toHaveLength(4);
     expect(
       (await service.snapshot()).receipts.filter((r) => r.targetId === b.id),
     ).toHaveLength(0);
@@ -818,6 +866,14 @@ it("retains per-occurrence failures and retries only failed audio sources", asyn
   expect(snapshot.playlists[0].entries[1].error).toContain(
     "Fixture provider unavailable",
   );
+  expect(
+    snapshot.tracks.every(
+      (track) =>
+        track.metadata.title === "Test 銀の狼" &&
+        track.metadata.album === "Owned test tones" &&
+        track.origins.title === "existing-tags",
+    ),
+  ).toBe(true);
   const originalEntries = snapshot.playlists[0].entries;
   expect(first.payload.destinationOccurrences).toEqual(
     originalEntries.map((entry) => entry.id),

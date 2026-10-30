@@ -87,6 +87,13 @@ const defaultProfile: Profile = {
   model: "",
   firmware: "",
   legacyPlaylist: false,
+  testResults: "",
+  mp3TagVersion: 3,
+  filenameLimit: 120,
+  pathLimit: 240,
+  playlistEncoding: "utf8",
+  playlistNewline: "LF",
+  orderTags: false,
 };
 export class LibraryService {
   private db: DatabaseSync;
@@ -96,7 +103,7 @@ export class LibraryService {
   private pumping = false;
   private closed = false;
   private indexWrite = false;
-  private lookupAt = 0;
+  private lookupAbort = new AbortController();
   private cookieFile: string | null = null;
   setCookieFile(file: string | null) {
     if (
@@ -409,7 +416,9 @@ export class LibraryService {
         "source.preview",
         "source.search",
         "lookup.search",
+        "lookup.cancel",
         "lookup.artworkPreview",
+        "artwork.placeholderPreview",
         "mixes.parse",
         "playlists.refreshPreview",
         "artwork.preview",
@@ -609,6 +618,49 @@ export class LibraryService {
           await rm(generated, { force: true });
         }
       }
+      case "artwork.placeholderPreview": {
+        const token = randomUUID();
+        const directory = path.join(this.requireVault(), "artwork");
+        await mkdir(directory, { recursive: true });
+        const generated = path.join(directory, `placeholder-${token}.jpg`);
+        const svg =
+          '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600"><rect width="600" height="600" fill="#091533"/><circle cx="300" cy="300" r="200" fill="none" stroke="#6d819f" stroke-width="8"/><path d="M340 180v200c0 30-70 45-90 10-20-35 35-65 65-40V205l105-25v150c0 30-70 45-90 10-20-35 35-65 65-40V215z" fill="#d8e4f4"/></svg>';
+        await sharp(Buffer.from(svg))
+          .toColorspace("srgb")
+          .jpeg({ quality: 90 })
+          .toFile(generated);
+        const origin =
+          "Locally generated TuneVault placeholder; no external artwork";
+        this.save("cache", {
+          id: "cover:" + token,
+          kind: "placeholder",
+          path: generated,
+          original: generated,
+          origin,
+          at: Date.now(),
+        });
+        return {
+          token,
+          preview:
+            "data:image/jpeg;base64," +
+            (await readFile(generated)).toString("base64"),
+          origin,
+          placeholder: true,
+        };
+      }
+      case "tracks.placeholder": {
+        const cover = this.get<any>("cache", "cover:" + text(data.token, 100));
+        if (cover.kind !== "placeholder" || Date.now() - cover.at > 86400000)
+          throw new Error("Placeholder preview expired; generate it again");
+        return this.edit(
+          ids(data.ids),
+          {},
+          undefined,
+          cover.path,
+          "locally-generated-placeholder",
+          cover.original,
+        );
+      }
       case "tracks.artwork": {
         const image = text(data.path, 4000);
         const selected = ids(data.ids);
@@ -744,6 +796,7 @@ export class LibraryService {
         this.save("cache", {
           id: `match:${referenceKey(occurrence.reference)}`,
           trackId: track.id,
+          approvedAt: Date.now(),
         });
         return playlist;
       }
@@ -894,12 +947,23 @@ export class LibraryService {
           )
             throw new Error("Prepared file changed or is missing");
         }
-        for (const receipt of receipts)
-          this.save("receipts", {
-            ...receipt,
-            evidence: "user-confirmed",
-            createdAt: now(),
-          });
+        const confirmed = new Set(
+          receipts.map((receipt) => receipt.confirmsReceiptId).filter(Boolean),
+        );
+        this.transaction(() => {
+          for (const receipt of receipts.filter(
+            (receipt) =>
+              receipt.evidence !== "user-confirmed" &&
+              !confirmed.has(receipt.id),
+          ))
+            this.save("receipts", {
+              ...receipt,
+              id: randomUUID(),
+              confirmsReceiptId: receipt.id,
+              evidence: "user-confirmed",
+              createdAt: now(),
+            });
+        });
         return this.snapshot();
       }
       case "jobs.cancel": {
@@ -964,10 +1028,18 @@ export class LibraryService {
         );
         return { path: dest };
       }
+      case "lookup.cancel":
+        this.lookupAbort.abort(new Error("Metadata request cancelled"));
+        this.lookupAbort = new AbortController();
+        return { cancelled: true };
       case "lookup.search":
         return this.lookup(this.get<Track>("tracks", data.id));
       case "lookup.artworkPreview": {
         this.requireOnline();
+        const signal = AbortSignal.any([
+          this.toolsAbort.signal,
+          this.lookupAbort.signal,
+        ]);
         const releaseId = text(data.releaseId, 100);
         if (
           !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
@@ -975,11 +1047,31 @@ export class LibraryService {
           )
         )
           throw new Error("Choose a valid MusicBrainz release");
-        const original = await fetchBounded(
+        let original: { bytes: Buffer; mime: string } | undefined;
+        let fetchedAt = Date.now();
+        try {
+          const cached = this.get<any>("cache", `cover-source:${releaseId}`);
+          if (Date.now() - cached.at < 86400000) {
+            const file = await confined(
+              this.requireVault(),
+              path.relative(this.requireVault(), text(cached.path, 4000)),
+            );
+            if ((await stat(file)).size > 5 * 1024 * 1024)
+              throw new Error("Cached cover exceeds bound");
+            await sharp(file, { limitInputPixels: 40000000 }).metadata();
+            original = { bytes: await readFile(file), mime: cached.mime };
+            fetchedAt = cached.at;
+          }
+        } catch {
+          /* A missing or invalid cached thumbnail can be requested again. */
+        }
+        original ??= await fetchBounded(
           new URL(`https://coverartarchive.org/release/${releaseId}/front-500`),
-          20 * 1024 * 1024,
+          5 * 1024 * 1024,
           true,
+          signal,
         );
+        signal.throwIfAborted();
         if (!/^image\/(jpeg|png|webp)(?:;|$)/i.test(original.mime))
           throw new Error("Provider returned an unsupported image");
         const token = randomUUID(),
@@ -995,6 +1087,13 @@ export class LibraryService {
             500000,
             data.padding !== false,
           );
+          signal.throwIfAborted();
+          this.save("cache", {
+            id: `cover-source:${releaseId}`,
+            path: raw,
+            mime: original.mime,
+            at: fetchedAt,
+          });
           this.save("cache", {
             id: "cover:" + token,
             path: generated,
@@ -1023,7 +1122,7 @@ export class LibraryService {
           {},
           undefined,
           cover.path,
-          "approved-lookup",
+          cover.origin || "approved-lookup",
           cover.original,
         );
       }
@@ -1150,7 +1249,13 @@ export class LibraryService {
   private findApproved(ref: Reference): string | null {
     try {
       const match = this.get<any>("cache", `match:${referenceKey(ref)}`);
-      if (this.all<Track>("tracks").some((t) => t.id === match.trackId))
+      if (
+        Number.isFinite(match.approvedAt) &&
+        Date.now() - match.approvedAt < 30 * 24 * 60 * 60 * 1000 &&
+        this.all<Track>("tracks").some(
+          (t) => t.id === match.trackId && existsSync(t.path),
+        )
+      )
         return match.trackId;
     } catch {
       /* An absent cache, missing media or disconnected destination remains explicit in the returned state. */
@@ -1197,6 +1302,7 @@ export class LibraryService {
         },
         artwork: image ?? track.artwork,
         artworkOriginal: imageOriginal ?? track.artworkOriginal,
+        artworkOrigin: image ? origin : track.artworkOrigin,
         revision: track.revision + 1,
       };
       const dest = await confined(
@@ -1639,14 +1745,15 @@ export class LibraryService {
             const metadata = normalizeMetadata({
               ...inspected.metadata,
               title:
+                inspected.metadata.title ||
                 info.track ||
                 info.title ||
-                inspected.metadata.title ||
                 "Unknown title",
-              artist: info.artist || "",
-              album: info.album || "",
-              albumArtist: info.album_artist || "",
-              date: String(info.release_date || ""),
+              artist: inspected.metadata.artist || info.artist || "",
+              album: inspected.metadata.album || info.album || "",
+              albumArtist:
+                inspected.metadata.albumArtist || info.album_artist || "",
+              date: inspected.metadata.date || String(info.release_date || ""),
             });
             const chapters: Chapter[] = (info.chapters || []).map((c: any) => ({
               start: Number(c.start_time),
@@ -1677,9 +1784,31 @@ export class LibraryService {
               metadata,
               origins: {
                 ...inspected.origins,
-                title: info.track ? "structured-source" : "source-title",
-                artist: info.artist ? "structured-source" : "unknown",
-                album: info.album ? "structured-source" : "unknown",
+                title: inspected.metadata.title
+                  ? "existing-tags"
+                  : info.track
+                    ? "structured-source"
+                    : "source-title",
+                artist: inspected.metadata.artist
+                  ? "existing-tags"
+                  : info.artist
+                    ? "structured-source"
+                    : "unknown",
+                album: inspected.metadata.album
+                  ? "existing-tags"
+                  : info.album
+                    ? "structured-source"
+                    : "unknown",
+                albumArtist: inspected.metadata.albumArtist
+                  ? "existing-tags"
+                  : info.album_artist
+                    ? "structured-source"
+                    : "unknown",
+                date: inspected.metadata.date
+                  ? "existing-tags"
+                  : info.release_date
+                    ? "structured-source"
+                    : "unknown",
               },
               revision: 1,
               favorite: false,
@@ -1707,6 +1836,7 @@ export class LibraryService {
                 this.save("cache", {
                   id: `match:${referenceKey(entry.reference)}`,
                   trackId: track.id,
+                  approvedAt: Date.now(),
                 });
             }
             playlist.revision++;
@@ -1856,13 +1986,29 @@ export class LibraryService {
       );
     text(profile.model, 200);
     text(profile.firmware, 200);
+    text(profile.testResults ?? "", 4000);
     if (
       profile.compatibility === "User-tested" &&
-      (!profile.model || !profile.firmware)
+      (!profile.model || !profile.firmware || !profile.testResults?.trim())
     )
-      throw new Error("Record model and firmware for a user-tested profile");
+      throw new Error(
+        "Record model, firmware and physical test results for a user-tested profile",
+      );
     if (typeof profile.legacyPlaylist !== "boolean")
       throw new Error("Invalid playlist setting");
+    if (
+      ![3, 4].includes(profile.mp3TagVersion!) ||
+      !Number.isInteger(profile.filenameLimit) ||
+      profile.filenameLimit! < 80 ||
+      profile.filenameLimit! > 180 ||
+      !Number.isInteger(profile.pathLimit) ||
+      profile.pathLimit! < 180 ||
+      profile.pathLimit! > 1024 ||
+      profile.playlistEncoding !== "utf8" ||
+      !["LF", "CRLF"].includes(profile.playlistNewline!) ||
+      typeof profile.orderTags !== "boolean"
+    )
+      throw new Error("Invalid advanced filename, tag or playlist setting");
     const playlistIds =
       data.playlistIds === undefined
         ? previous?.playlistIds || []
@@ -1876,16 +2022,26 @@ export class LibraryService {
         Object.keys(defaultProfile)
           .filter(
             (key) =>
-              !["revision", "compatibility", "model", "firmware"].includes(key),
+              ![
+                "revision",
+                "compatibility",
+                "model",
+                "firmware",
+                "testResults",
+              ].includes(key),
           )
           .some(
             (key) =>
               profile[key as keyof Profile] !==
-              previous.profile[key as keyof Profile],
+              { ...defaultProfile, ...previous.profile }[key as keyof Profile],
           ));
     profile.revision = previous
       ? previous.profile.revision + (outputChanged ? 1 : 0)
       : 1;
+    if (outputChanged) {
+      profile.compatibility = "Baseline";
+      profile.testResults = "";
+    }
     const budget =
       data.budget === undefined ? (previous?.budget ?? null) : data.budget;
     if (budget !== null && (!Number.isSafeInteger(budget) || budget <= 0))
@@ -1903,6 +2059,10 @@ export class LibraryService {
       profile,
       playlistIds,
       connected: !!destination && existsSync(destination),
+      lastCapacity:
+        destination === previous?.destination
+          ? previous.lastCapacity
+          : undefined,
     };
     this.save("targets", target);
     return target;
@@ -1952,6 +2112,15 @@ export class LibraryService {
     try {
       const fs = await statfs(target.destination);
       availableBytes = Number(fs.bavail) * Number(fs.bsize);
+      target.lastCapacity = {
+        totalBytes: Number(fs.blocks) * Number(fs.bsize),
+        freeBytes: availableBytes,
+        observedAt: now(),
+      };
+      this.save("targets", {
+        ...this.get<Target>("targets", target.id),
+        lastCapacity: target.lastCapacity,
+      });
     } catch {
       /* An absent cache, missing media or disconnected destination remains explicit in the returned state. */
     }
@@ -1970,6 +2139,7 @@ export class LibraryService {
     } catch {
       /* A new or disconnected target has no reusable files yet. */
     }
+    let knownBytes = 0;
     let total = 0,
       selectedBytes = 0;
     for (let ordinal = 0; ordinal < selection.entries.length; ordinal++) {
@@ -2003,7 +2173,11 @@ export class LibraryService {
       const key = `${track.id}-${track.revision}-${target.profile.revision}`;
       if (!reusable.has(key)) {
         let found: { receipt: Receipt; bytes: number } | null = null;
-        const candidates = (target.transport === "imazing" ? [] : receipts)
+        const candidates = (
+          target.transport === "imazing" || target.profile.orderTags
+            ? []
+            : receipts
+        )
           .filter(
             (r) =>
               r.trackId === track!.id &&
@@ -2021,6 +2195,10 @@ export class LibraryService {
             if (
               !targetRoot ||
               !actual.startsWith(targetRoot + path.sep) ||
+              Buffer.byteLength(path.basename(actual), "utf8") >
+                (target.profile.filenameLimit ?? 120) ||
+              Buffer.byteLength(actual, "utf8") >
+                (target.profile.pathLimit ?? 240) ||
               (await hashFile(actual)) !== receipt.hash
             )
               continue;
@@ -2050,6 +2228,15 @@ export class LibraryService {
                 ? (target.profile.bitrate * 1000) / 8
                 : track.sampleRate * 4),
           );
+      const retag =
+        compatible &&
+        receipts.some(
+          (receipt) =>
+            receipt.trackId === track!.id &&
+            receipt.profileRevision === target.profile.revision &&
+            receipt.trackRevision !== track!.revision,
+        );
+      knownBytes += previous?.bytes || 0;
       selectedBytes += previous?.bytes ?? estimatedBytes;
       total += previous ? 0 : estimatedBytes;
       items.push({
@@ -2063,9 +2250,11 @@ export class LibraryService {
               ? "Already current"
               : previous
                 ? "Reorder-only"
-                : receipts.some((r) => r.trackId === track!.id)
-                  ? "Update"
-                  : "Add",
+                : retag
+                  ? "Retag"
+                  : receipts.some((r) => r.trackId === track!.id)
+                    ? "Update"
+                    : "Add",
         reason:
           availableBytes === null
             ? "Destination disconnected"
@@ -2073,11 +2262,30 @@ export class LibraryService {
               ? "Hash-verified audio and playlist revision are already current"
               : previous
                 ? "Reuse hash-verified audio; only ordered playlist references need writing"
-                : compatible
-                  ? "Reuse compatible audio without lossy re-encoding"
-                  : `Convert to ${target.profile.format.toUpperCase()}${["flac", "alac"].includes(target.profile.format) && track.source?.quality.includes("Lossy") ? " (lossy history preserved)" : ""}`,
+                : retag
+                  ? "Rewrite tags/artwork while copying compatible audio without re-encoding"
+                  : compatible
+                    ? "Reuse compatible audio without lossy re-encoding"
+                    : `Convert to ${target.profile.format.toUpperCase()}${["flac", "alac"].includes(target.profile.format) && track.source?.quality.includes("Lossy") ? " (lossy history preserved)" : ""}`,
         estimatedBytes: previous ? 0 : estimatedBytes,
       });
+      try {
+        const parent = path.join(
+          await realpath(target.destination),
+          `TuneVault-${target.id}`,
+          "0".repeat(36),
+        );
+        await this.exportPath(
+          target.destination,
+          target.id,
+          "0".repeat(36),
+          this.exportName(track, ordinal + 1, target.profile, parent),
+          target.profile,
+        );
+      } catch (error) {
+        items[items.length - 1].action = "Blocked";
+        items[items.length - 1].reason = message(error);
+      }
     }
     if (
       availableBytes !== null &&
@@ -2100,6 +2308,8 @@ export class LibraryService {
       ).size,
       estimatedBytes: total,
       availableBytes,
+      knownBytes,
+      budget: target.budget,
       safetyReserve,
       omissions,
       destination: target.destination,
@@ -2112,6 +2322,53 @@ export class LibraryService {
               ? "Only hashes of files copied to this explicitly selected mounted folder are verified; playback compatibility needs a physical test."
               : "Folder export does not prove receipt by a player.",
     };
+  }
+  private exportName(
+    track: Track,
+    ordinal: number,
+    profile: Profile,
+    parent: string,
+  ): string {
+    const prefix = `${String(ordinal).padStart(4, "0")} - `,
+      suffix = extension(track, profile.format);
+    const limit = Math.min(
+      profile.filenameLimit ?? 120,
+      (profile.pathLimit ?? 240) - Buffer.byteLength(parent + path.sep, "utf8"),
+    );
+    if (limit < Buffer.byteLength(prefix + "A" + suffix, "utf8"))
+      throw new Error(
+        "Export path exceeds the configured full-path byte limit; choose a shorter destination or raise the advanced path limit",
+      );
+    const title = Array.from(
+      safeName(
+        track.metadata.artist
+          ? `${track.metadata.artist} - ${track.metadata.title}`
+          : track.metadata.title,
+      ),
+    );
+    while (
+      title.length &&
+      Buffer.byteLength(prefix + title.join("") + suffix, "utf8") > limit
+    )
+      title.pop();
+    return prefix + (title.join("") || "A") + suffix;
+  }
+  private async exportPath(
+    destination: string,
+    targetId: string,
+    batchId: string,
+    name: string,
+    profile: Profile,
+  ): Promise<string> {
+    const file = await confined(
+      await realpath(destination),
+      `TuneVault-${targetId}/${batchId}/${name}`,
+    );
+    if (Buffer.byteLength(file, "utf8") > (profile.pathLimit ?? 240))
+      throw new Error(
+        "Export path exceeds the configured full-path byte limit; choose a shorter destination or raise the advanced path limit",
+      );
+    return file;
   }
   private async exportJob(job: Job, signal: AbortSignal) {
     const data = job.payload,
@@ -2207,7 +2464,7 @@ export class LibraryService {
         const item = plan.items[i];
         if (item.action === "Unavailable") continue;
         const track = this.get<Track>("tracks", entry.trackId);
-        const key = `${track.id}-${track.revision}-${target.profile.revision}`;
+        const key = `${track.id}-${track.revision}-${target.profile.revision}${target.profile.orderTags ? `-order-${i + 1}-${selected.entries.length}` : ""}`;
         let rendered = renditionCache.get(key);
         if (!rendered) {
           const cacheDir = path.join(
@@ -2246,10 +2503,29 @@ export class LibraryService {
                 target.profile.artworkSize,
                 target.profile.artworkBytes,
               );
-            await writeMedia({ ...track, artwork: image }, temp, tools, {
-              profile: target.profile,
-              signal,
-            });
+            await writeMedia(
+              {
+                ...track,
+                artwork: image,
+                ...(target.profile.orderTags
+                  ? {
+                      metadata: {
+                        ...track.metadata,
+                        trackNumber: String(i + 1),
+                        trackTotal: String(selected.entries.length),
+                        discNumber: "1",
+                        discTotal: "1",
+                      },
+                    }
+                  : {}),
+              },
+              temp,
+              tools,
+              {
+                profile: target.profile,
+                signal,
+              },
+            );
             const hash = await hashFile(temp),
               bytes = (await stat(temp)).size;
             await rename(temp, cached);
@@ -2264,11 +2540,23 @@ export class LibraryService {
           throw new Error(
             "Exact staged bytes exceed the selected content budget",
           );
-        const name = `${String(i + 1).padStart(4, "0")} - ${safeName(track.metadata.artist ? `${track.metadata.artist} - ${track.metadata.title}` : track.metadata.title)}${extension(track, target.profile.format)}`;
-        let dest = await confined(targetRoot, `${batchId}/${name}`);
+        const name = this.exportName(
+          track,
+          i + 1,
+          target.profile,
+          batchDirectory,
+        );
+        let dest = await this.exportPath(
+          destinationRoot,
+          target.id,
+          batchId,
+          name,
+          target.profile,
+        );
         let exportedName = name;
         let reused = false;
-        for (const previous of target.transport === "imazing"
+        for (const previous of target.transport === "imazing" ||
+        target.profile.orderTags
           ? []
           : previousReceipts) {
           if (
@@ -2281,6 +2569,13 @@ export class LibraryService {
             continue;
           const actual = await realpath(previous.path);
           if (!actual.startsWith((await realpath(targetRoot)) + path.sep))
+            continue;
+          if (
+            Buffer.byteLength(path.basename(actual), "utf8") >
+              (target.profile.filenameLimit ?? 120) ||
+            Buffer.byteLength(actual, "utf8") >
+              (target.profile.pathLimit ?? 240)
+          )
             continue;
           if ((await hashFile(actual)) !== rendered.hash) continue;
           dest = actual;
@@ -2351,7 +2646,9 @@ export class LibraryService {
       signal.throwIfAborted();
       await writeFile(
         await confined(batchRoot, "playlist.m3u8.partial"),
-        playlistLines.join("\n") + "\n",
+        playlistLines.join(
+          target.profile.playlistNewline === "CRLF" ? "\r\n" : "\n",
+        ) + (target.profile.playlistNewline === "CRLF" ? "\r\n" : "\n"),
         { encoding: "utf8" },
       );
       await verifyVolume();
@@ -2443,6 +2740,7 @@ export class LibraryService {
     for (const [index, title] of [
       "Test A — 銀の狼",
       "Test B — Música",
+      ...(target.profile.orderTags ? ["Test A — 銀の狼"] : []),
     ].entries()) {
       signal.throwIfAborted();
       const source = path.join(stage, `tone-${index}.flac`);
@@ -2454,7 +2752,7 @@ export class LibraryService {
           "-f",
           "lavfi",
           "-i",
-          `sine=frequency=${440 + index * 220}:duration=2`,
+          `sine=frequency=${440 + (index % 2) * 220}:duration=2`,
           "-c:a",
           "flac",
           source,
@@ -2479,12 +2777,24 @@ export class LibraryService {
           album: "Generated compatibility tones",
           albumArtist: "TuneVault",
           trackNumber: String(index + 1),
-          trackTotal: "2",
+          trackTotal: target.profile.orderTags ? "3" : "2",
           comment:
             "Synthetic test tone. Preparing this file does not verify transfer, playback or hardware compatibility.",
         },
       };
-      const name = `${String(index + 1).padStart(2, "0")} - ${safeName(title)}${extension(track, target.profile.format)}`;
+      const name = this.exportName(
+        {
+          ...track,
+          metadata: {
+            ...track.metadata,
+            artist: "",
+            title: `${index % 2 ? "B" : "A"}-銀`,
+          },
+        },
+        index + 1,
+        target.profile,
+        path.join(targetRoot, `compatibility-test-${job.id}`),
+      );
       const output = path.join(pack, name);
       await writeMedia(track, output, tools, {
         profile: target.profile,
@@ -2500,17 +2810,22 @@ export class LibraryService {
       });
       this.updateJob(job.id, {
         progress: (index + 1) / 3,
-        message: `Generated synthetic tone ${index + 1} of 2`,
+        message: `Generated synthetic tone ${index + 1} of ${target.profile.orderTags ? 3 : 2}`,
       });
     }
-    const order = [files[0], files[1], files[0]];
+    const order = [
+      files[0],
+      files[1],
+      target.profile.orderTags ? files[2] : files[0],
+    ];
     const playlist = [
       "#EXTM3U",
       ...order.flatMap((file) => [`#EXTINF:2,${file.title}`, file.name]),
     ];
     await writeFile(
       path.join(pack, "playlist.m3u8"),
-      playlist.join("\n") + "\n",
+      playlist.join(target.profile.playlistNewline === "CRLF" ? "\r\n" : "\n") +
+        (target.profile.playlistNewline === "CRLF" ? "\r\n" : "\n"),
       "utf8",
     );
     if (target.profile.legacyPlaylist)
@@ -2568,6 +2883,13 @@ export class LibraryService {
     try {
       for (const name of names) {
         signal.throwIfAborted();
+        await this.exportPath(
+          target.destination,
+          target.id,
+          `compatibility-test-${job.id}`,
+          name,
+          target.profile,
+        );
         const destination = await confined(temporary, name);
         await copyFile(path.join(pack, name), destination);
         if (
@@ -2658,15 +2980,18 @@ export class LibraryService {
     } catch {
       /* An absent cache, missing media or disconnected destination remains explicit in the returned state. */
     }
-    this.lookupAt = Math.max(Date.now(), this.lookupAt + 1100);
-    await delay(Math.max(0, this.lookupAt - Date.now()));
     const url = new URL("https://musicbrainz.org/ws/2/recording/");
     url.search = new URLSearchParams({
       query,
       fmt: "json",
       limit: "10",
     }).toString();
-    const response = await fetchBounded(url, 2 * 1024 * 1024);
+    const response = await fetchBounded(
+      url,
+      2 * 1024 * 1024,
+      false,
+      AbortSignal.any([this.toolsAbort.signal, this.lookupAbort.signal]),
+    );
     const data = JSON.parse(response.bytes.toString("utf8"));
     const results = (data.recordings || []).map((r: any) => ({
       id: r.id,

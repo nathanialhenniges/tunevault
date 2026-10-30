@@ -29,6 +29,7 @@ it("requires exact production installer smoke and separately identified upgrade 
       string,
       { name: string; url: string; size: number; sha512: string }
     > = {};
+    const sourceReviews: Record<string, unknown> = {};
     for (const [platform, os, arch, ext] of [
       ["darwin", "mac", "arm64", "dmg"],
       ["darwin", "mac", "x64", "dmg"],
@@ -46,6 +47,23 @@ it("requires exact production installer smoke and separately identified upgrade 
       assets[`${platform}-${arch}`] = {
         ...artifact,
         url: `https://github.com/nathanialhenniges/tunevault/releases/download/v4.0.0/${name}`,
+      };
+      const sourceName = `synthetic-source-${platform}-${arch}.tar`;
+      const sourceBytes = Buffer.from(
+        "Synthetic source gate fixture; not real bundled-tool source or a legal approval.",
+      );
+      await writeFile(path.join(candidate, sourceName), sourceBytes);
+      sourceReviews[`${platform}-${arch}`] = {
+        artifactSha512: artifact.sha512,
+        status: "corresponding-source-reviewed",
+        reviewedBy: "Synthetic test reviewer",
+        reviewedAt: "2026-10-30T00:00:00Z",
+        sourceArchives: [
+          {
+            name: sourceName,
+            sha256: createHash("sha256").update(sourceBytes).digest("hex"),
+          },
+        ],
       };
       await writeFile(path.join(candidate, name), bytes);
       await writeFile(
@@ -83,6 +101,9 @@ it("requires exact production installer smoke and separately identified upgrade 
         assets,
       }),
     );
+    const compliancePath = path.join(candidate, "source-compliance.json");
+    const compliance = { schema: 1, platforms: sourceReviews };
+    await writeFile(compliancePath, JSON.stringify(compliance));
     await writeFile(path.join(candidate, "release-envelope.json"), envelope);
     await writeFile(
       path.join(candidate, "release-envelope.sig"),
@@ -100,6 +121,25 @@ it("requires exact production installer smoke and separately identified upgrade 
     await expect(
       run(process.execPath, [script, candidate], { cwd: root }),
     ).resolves.toMatchObject({ stderr: "" });
+    await writeFile(
+      compliancePath,
+      JSON.stringify({ schema: 1, platforms: {} }),
+    );
+    await expect(
+      run(process.execPath, [script, candidate], { cwd: root }),
+    ).rejects.toThrow("Corresponding-source review");
+    await writeFile(compliancePath, JSON.stringify(compliance));
+    await writeFile(
+      path.join(candidate, "synthetic-source-win32-x64.tar"),
+      "Changed source archive",
+    );
+    await expect(
+      run(process.execPath, [script, candidate], { cwd: root }),
+    ).rejects.toThrow("archive missing or changed");
+    await writeFile(
+      path.join(candidate, "synthetic-source-win32-x64.tar"),
+      "Synthetic source gate fixture; not real bundled-tool source or a legal approval.",
+    );
     const evidenceFile = path.join(candidate, "evidence-darwin-arm64.json");
     const good = JSON.parse(await readFile(evidenceFile, "utf8"));
     for (const bad of [

@@ -192,6 +192,20 @@ describe("partial imports and saved player scope", () => {
     const state = await service.snapshot();
     expect(
       state.receipts.filter((receipt) => receipt.targetId === selected.id),
+    ).toHaveLength(10);
+    expect(
+      state.receipts.filter(
+        (receipt) =>
+          receipt.targetId === selected.id &&
+          receipt.evidence === "ready-locally",
+      ),
+    ).toHaveLength(5);
+    expect(
+      state.receipts.filter(
+        (receipt) =>
+          receipt.targetId === selected.id &&
+          receipt.evidence === "user-confirmed",
+      ),
     ).toHaveLength(5);
     expect(
       state.receipts.filter((receipt) => receipt.targetId === other.id),

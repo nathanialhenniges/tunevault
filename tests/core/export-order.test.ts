@@ -190,8 +190,8 @@ describe("incremental ordered exports", () => {
     expect(
       (await service.snapshot()).receipts
         .filter((receipt) => receipt.batchId === second.id)
-        .every((receipt) => receipt.evidence === "user-confirmed"),
-    ).toBe(true);
+        .filter((receipt) => receipt.evidence === "user-confirmed"),
+    ).toHaveLength(2);
     expect(
       (
         (await service.dispatch("export.preview", selection)) as ExportPlan
@@ -215,7 +215,7 @@ describe("incremental ordered exports", () => {
     await expect(service.dispatch("export.prepare", selection)).rejects.toThrow(
       "blocked",
     );
-    expect((await service.snapshot()).receipts).toHaveLength(4);
+    expect((await service.snapshot()).receipts).toHaveLength(8);
   }, 120000);
 
   it("does not call corrupted destination audio reusable or current", async () => {

@@ -19,6 +19,11 @@ if (
 )
   throw new Error("Production release signature missing/invalid");
 const envelope = JSON.parse(bytes);
+const sourceCompliance = JSON.parse(
+  await readFile(join(root, "source-compliance.json"), "utf8"),
+);
+if (sourceCompliance.schema !== 1)
+  throw new Error("Corresponding-source review schema missing");
 if (
   envelope.schema !== 1 ||
   envelope.channel !== "stable" ||
@@ -29,6 +34,36 @@ for (const platform of ["darwin-arm64", "darwin-x64", "win32-x64"]) {
   const asset = envelope.assets[platform];
   if (!asset || !/^[A-Za-z0-9._-]+$/.test(asset.name))
     throw new Error(`Missing ${platform} artifact`);
+  const review = sourceCompliance.platforms?.[platform];
+  if (
+    !review ||
+    review.artifactSha512 !== asset.sha512 ||
+    review.status !== "corresponding-source-reviewed" ||
+    typeof review.reviewedBy !== "string" ||
+    !review.reviewedBy.trim() ||
+    !Number.isFinite(Date.parse(review.reviewedAt)) ||
+    !Array.isArray(review.sourceArchives) ||
+    !review.sourceArchives.length
+  )
+    throw new Error(
+      `Corresponding-source review absent or for different artifact: ${platform}`,
+    );
+  for (const source of review.sourceArchives) {
+    if (
+      !source ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$/.test(source.name) ||
+      !/^[a-f0-9]{64}$/.test(source.sha256)
+    )
+      throw new Error(`Invalid corresponding-source identity: ${platform}`);
+    const sourceBytes = await readFile(join(root, source.name));
+    if (
+      !sourceBytes.length ||
+      createHash("sha256").update(sourceBytes).digest("hex") !== source.sha256
+    )
+      throw new Error(
+        `Corresponding-source archive missing or changed: ${platform}/${source.name}`,
+      );
+  }
   if (
     asset.url !==
     `https://github.com/nathanialhenniges/tunevault/releases/download/v${pkg.version}/${asset.name}`

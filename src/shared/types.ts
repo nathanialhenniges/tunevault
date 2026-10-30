@@ -25,6 +25,7 @@ export interface Track {
   revision: number;
   artwork: string | null;
   artworkOriginal?: string;
+  artworkOrigin?: string;
   favorite: boolean;
   missing: boolean;
   codec: string;
@@ -93,6 +94,13 @@ export interface Profile {
   model: string;
   firmware: string;
   legacyPlaylist: boolean;
+  testResults?: string;
+  mp3TagVersion?: 3 | 4;
+  filenameLimit?: number;
+  pathLimit?: number;
+  playlistEncoding?: "utf8";
+  playlistNewline?: "LF" | "CRLF";
+  orderTags?: boolean;
 }
 export interface Target {
   id: string;
@@ -104,6 +112,7 @@ export interface Target {
   profile: Profile;
   playlistIds: string[];
   connected: boolean;
+  lastCapacity?: { totalBytes: number; freeBytes: number; observedAt: string };
 }
 export interface Job {
   id: string;
@@ -131,6 +140,7 @@ export interface Receipt {
   path: string;
   evidence: ReceiptEvidence;
   createdAt: string;
+  confirmsReceiptId?: string;
 }
 export interface Settings {
   vault: string;
@@ -158,6 +168,7 @@ export interface ExportItem {
   action:
     | "Add"
     | "Update"
+    | "Retag"
     | "Reorder-only"
     | "Already current"
     | "Unavailable"
@@ -172,6 +183,8 @@ export interface ExportPlan {
   uniqueMedia: number;
   estimatedBytes: number;
   availableBytes: number | null;
+  knownBytes: number;
+  budget: number | null;
   safetyReserve: number;
   omissions: { ordinal: number; title: string; reason: string }[];
   destination: string;

@@ -139,7 +139,7 @@ export default function App() {
   }, [snapshot.settings.appearance, snapshot.settings.accent, systemDark]);
   const run = useCallback(
     async (action: string, input?: unknown): Promise<any> => {
-      setError("");
+      if (action !== "settings.update") setError("");
       try {
         if (action === "openLegal") {
           const kind = (input as { document: string }).document;
@@ -184,6 +184,10 @@ export default function App() {
             "reveal",
             "source.search",
             "lookup.search",
+            "lookup.cancel",
+            "lookup.artworkPreview",
+            "artwork.preview",
+            "artwork.placeholderPreview",
             "mixes.parse",
             "import.preview",
             "source.preview",
@@ -206,7 +210,7 @@ export default function App() {
         }
         return result;
       } catch (e) {
-        setError(message(e));
+        if (message(e) !== "Metadata request cancelled") setError(message(e));
         throw e;
       }
     },

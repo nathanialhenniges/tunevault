@@ -75,6 +75,7 @@ const commands = new Set([
   "tracks.undo",
   "tracks.favorite",
   "tracks.artwork",
+  "tracks.placeholder",
   "tracks.relink",
   "playlists.create",
   "playlists.update",
@@ -101,10 +102,12 @@ const commands = new Set([
   "mixes.split",
   "description.export",
   "lookup.search",
+  "lookup.cancel",
   "lookup.apply",
   "lookup.artworkPreview",
   "lookup.artworkApply",
   "artwork.preview",
+  "artwork.placeholderPreview",
   "backup",
   "restore",
   "diagnostics",
@@ -273,7 +276,7 @@ app
       version: app.getVersion(),
       copyright: "Copyright © 2026 Nathanial Henniges",
       credits:
-        "MIT License · Local music archive and portable-player exports. Generated concept logo; third-party components retain their own licenses.",
+        "MIT License · Local music archive and portable-player exports. Third-party components retain their own licenses.",
       website: "https://github.com/nathanialhenniges/tunevault",
       iconPath: app.isPackaged
         ? join(process.resourcesPath, "icon.png")
@@ -666,6 +669,7 @@ app
             "export.prepare",
             "mixes.split",
             "targets.testPack",
+            "tracks.placeholder",
             "jobs.retry",
           ].includes(action)
         )

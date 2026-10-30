@@ -68,17 +68,47 @@ export default function Inspector({
     token: string;
     preview: string;
     origin: string;
+    placeholder?: boolean;
   } | null>(null);
   const [artPath, setArtPath] = useState<string | null>(null);
   const [artPreview, setArtPreview] = useState("");
   const [padding, setPadding] = useState(true);
   const [busy, setBusy] = useState(false);
   const [networkAck, setNetworkAck] = useState(onlineAcknowledged);
+  const metadataGeneration = useRef(0);
+  const [metadataBusy, setMetadataBusy] = useState(false);
+  const [metadataError, setMetadataError] = useState("");
+  async function requestMetadata(
+    action: string,
+    input: unknown,
+    accept: (result: any) => void,
+  ) {
+    const generation = ++metadataGeneration.current;
+    setMetadataBusy(true);
+    setMetadataError("");
+    try {
+      const result = await run(action, input);
+      if (generation === metadataGeneration.current) accept(result);
+    } catch (error) {
+      if (generation === metadataGeneration.current)
+        setMetadataError(message(error));
+    } finally {
+      if (generation === metadataGeneration.current) setMetadataBusy(false);
+    }
+  }
   useEffect(() => {
+    metadataGeneration.current++;
+    setMetadataBusy(false);
+    setMetadataError("");
     setChanges({});
     setLocks(track.locks);
     setLookups([]);
     setChapters(null);
+    setCoverPreview(null);
+    return () => {
+      metadataGeneration.current++;
+      void run("lookup.cancel").catch(() => {});
+    };
   }, [track.id, track.revision]);
   const update = (field: MetadataField, value: string) =>
     setChanges((old) => ({ ...old, [field]: value }));
@@ -243,6 +273,17 @@ export default function Inspector({
           >
             Choose local artwork…
           </button>
+          <button
+            disabled={track.demo || busy}
+            onClick={async () =>
+              setCoverPreview(await run("artwork.placeholderPreview"))
+            }
+          >
+            Generate offline placeholder…
+          </button>
+          {track.artworkOrigin && (
+            <p className="small muted">Artwork origin: {track.artworkOrigin}</p>
+          )}
         </details>
         <details open={!!track.source?.description}>
           <summary>Description & tracklist</summary>
@@ -351,20 +392,39 @@ export default function Inspector({
             </label>
           )}
           <button
-            disabled={track.demo || !networkAck}
+            disabled={track.demo || !networkAck || metadataBusy}
             onClick={async () => {
               if (!onlineAcknowledged)
                 await run("settings.update", { onlineAcknowledged: true });
-              const result = await run("lookup.search", { id: track.id });
-              setLookups(
-                Array.isArray(result)
-                  ? result
-                  : result?.recordings || result?.results || [],
+              setLookups([]);
+              await requestMetadata(
+                "lookup.search",
+                { id: track.id },
+                (result) =>
+                  setLookups(
+                    Array.isArray(result)
+                      ? result
+                      : result?.recordings || result?.results || [],
+                  ),
               );
             }}
           >
             Find suggestions
           </button>
+          {metadataBusy && (
+            <button
+              onClick={async () => {
+                metadataGeneration.current++;
+                setMetadataBusy(false);
+                setMetadataError("");
+                await run("lookup.cancel");
+              }}
+            >
+              Cancel metadata request
+            </button>
+          )}
+          {metadataBusy && <p role="status">Requesting metadata or artwork…</p>}
+          {metadataError && <p role="alert">{metadataError}</p>}
           {lookups.map((result, index) => (
             <div className="suggestion" key={result.id || index}>
               <strong>{result.title}</strong>
@@ -394,14 +454,18 @@ export default function Inspector({
                     {release.country ? ` · ${release.country}` : ""}
                   </span>
                   <button
-                    onClick={async () =>
-                      setCoverPreview(
-                        await run("lookup.artworkPreview", {
+                    disabled={metadataBusy}
+                    onClick={async () => {
+                      setCoverPreview(null);
+                      await requestMetadata(
+                        "lookup.artworkPreview",
+                        {
                           releaseId: release.id,
                           padding: true,
-                        }),
-                      )
-                    }
+                        },
+                        setCoverPreview,
+                      );
+                    }}
                   >
                     Preview release artwork…
                   </button>
@@ -450,16 +514,25 @@ export default function Inspector({
       )}
       {coverPreview && (
         <Modal
-          title="Review release artwork"
+          title={
+            coverPreview.placeholder
+              ? "Review placeholder artwork"
+              : "Review release artwork"
+          }
           onClose={() => setCoverPreview(null)}
           actions={
             <button
               className="primary"
               onClick={async () => {
-                await run("lookup.artworkApply", {
-                  ids: [track.id],
-                  token: coverPreview.token,
-                });
+                await run(
+                  coverPreview.placeholder
+                    ? "tracks.placeholder"
+                    : "lookup.artworkApply",
+                  {
+                    ids: [track.id],
+                    token: coverPreview.token,
+                  },
+                );
                 setCoverPreview(null);
               }}
             >
@@ -470,13 +543,17 @@ export default function Inspector({
           <img
             className="art-preview"
             src={coverPreview.preview}
-            alt="Proposed release artwork"
+            alt={
+              coverPreview.placeholder
+                ? "Proposed locally generated placeholder"
+                : "Proposed release artwork"
+            }
           />
           <p className="small muted">{coverPreview.origin}</p>
           <p>
-            This release image is a suggestion. Check that it matches this
-            recording and that you may use it. Existing audio survives a failed
-            image request.
+            {coverPreview.placeholder
+              ? "This neutral image was generated entirely on your computer. Applying it preserves the previous archive revision and artwork for Undo."
+              : "This release image is a suggestion. Check that it matches this recording and that you may use it. Existing audio survives a failed image request."}
           </p>
         </Modal>
       )}
@@ -753,7 +830,12 @@ export function BatchEditor({
                 <input
                   aria-label={`Batch ${label}`}
                   disabled={!(key in changes)}
-                  placeholder={common(key) ?? "Mixed values — unchanged"}
+                  placeholder={
+                    common(key) ??
+                    (key in changes
+                      ? "Mixed values — will be cleared"
+                      : "Mixed values — unchanged")
+                  }
                   value={changes[key] ?? ""}
                   onChange={(e) =>
                     setChanges((old) => ({ ...old, [key]: e.target.value }))
