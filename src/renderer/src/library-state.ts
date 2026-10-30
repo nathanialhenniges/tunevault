@@ -21,10 +21,20 @@ export function receiptIsCurrent(
   )
     return false;
   if (!receipt.playlistRevision.includes(":")) return true;
-  const [playlistId, revision] = receipt.playlistRevision.split(":");
-  return playlists.some(
-    (playlist) =>
-      playlist.id === playlistId && playlist.revision === Number(revision),
+  const revisions = receipt.playlistRevision
+    .split("|")
+    .map((value) => value.split(":"));
+  if (
+    revisions.length > 1 &&
+    JSON.stringify(revisions.map(([id]) => id)) !==
+      JSON.stringify(target.playlistIds)
+  )
+    return false;
+  return revisions.every(([playlistId, revision]) =>
+    playlists.some(
+      (playlist) =>
+        playlist.id === playlistId && playlist.revision === Number(revision),
+    ),
   );
 }
 
@@ -57,4 +67,31 @@ export function targetState(
     "user-confirmed": "User-confirmed transfer",
     "volume-verified": "Copied and verified",
   }[current.evidence];
+}
+
+export function compareAlbumTracks(a: Track, b: Track): number {
+  const ordinal = (value: string, fallback: number) =>
+    /^\d+$/.test(value) && Number(value) > 0 ? Number(value) : fallback;
+  return (
+    ordinal(a.metadata.discNumber, 1) - ordinal(b.metadata.discNumber, 1) ||
+    ordinal(a.metadata.trackNumber, Number.MAX_SAFE_INTEGER) -
+      ordinal(b.metadata.trackNumber, Number.MAX_SAFE_INTEGER) ||
+    a.metadata.title.localeCompare(b.metadata.title)
+  );
+}
+
+export function needsPreparation(
+  track: Track,
+  target: Target | undefined,
+  receipts: Receipt[],
+  playlists: Playlist[],
+): boolean {
+  return (
+    !!target &&
+    !track.demo &&
+    !track.missing &&
+    !receipts.some((receipt) =>
+      receiptIsCurrent(track, target, receipt, playlists),
+    )
+  );
 }

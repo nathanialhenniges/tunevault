@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Metadata, MetadataField, Track } from "../../shared/types";
 import { Artwork } from "./Library";
-import { bytes, duration, Icon, Modal } from "./ui";
+import { bytes, duration, Icon, message, Modal } from "./ui";
 
 export const fields: [MetadataField, string][] = [
   ["title", "Title"],
@@ -31,6 +31,34 @@ export default function Inspector({
   run: Run;
   onlineAcknowledged: boolean;
 }) {
+  const panel = useRef<HTMLElement>(null);
+  const [narrow, setNarrow] = useState(
+    () => matchMedia("(max-width: 1199px)").matches,
+  );
+  useEffect(() => {
+    const media = matchMedia("(max-width: 1199px)");
+    const changed = () => setNarrow(media.matches);
+    media.addEventListener("change", changed);
+    return () => media.removeEventListener("change", changed);
+  }, []);
+  useEffect(() => {
+    if (!narrow) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const background = Array.from(
+      document.querySelectorAll<HTMLElement>(".main-content,.sidebar"),
+    );
+    const previous = background.map((element) => element.inert);
+    background.forEach((element) => {
+      element.inert = true;
+    });
+    panel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => {
+      background.forEach((element, index) => {
+        element.inert = previous[index];
+      });
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [narrow]);
   const [changes, setChanges] = useState<Partial<Metadata>>({});
   const [locks, setLocks] = useState<MetadataField[]>(track.locks);
   const [preview, setPreview] = useState(false);
@@ -65,7 +93,42 @@ export default function Inspector({
     }
   }
   return (
-    <aside className="inspector" aria-labelledby="inspector-title">
+    <aside
+      ref={panel}
+      className="inspector"
+      role={narrow ? "dialog" : undefined}
+      aria-modal={narrow ? true : undefined}
+      tabIndex={-1}
+      aria-labelledby="inspector-title"
+      onKeyDown={(event) => {
+        if (!narrow || document.querySelector("dialog[open]")) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const controls = Array.from(
+          panel.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])',
+          ) || [],
+        ).filter((element) => element.getClientRects().length > 0);
+        const first = controls[0],
+          last = controls.at(-1);
+        if (
+          event.shiftKey &&
+          (document.activeElement === first ||
+            document.activeElement === panel.current)
+        ) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }}
+    >
       <header className="inspector-head">
         <h2 id="inspector-title">Track details</h2>
         <button
@@ -596,111 +659,172 @@ export function BatchEditor({
   const [review, setReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lockFields, setLockFields] = useState(true);
+  const [undoReview, setUndoReview] = useState(false);
+  const [undoError, setUndoError] = useState("");
   const common = (key: MetadataField) =>
     tracks.every((t) => t.metadata[key] === tracks[0].metadata[key])
       ? tracks[0].metadata[key]
       : undefined;
   return (
-    <Modal
-      title={`Edit ${tracks.length} selected tracks`}
-      wide
-      onClose={onClose}
-      actions={
+    <>
+      <Modal
+        title={`Edit ${tracks.length} selected tracks`}
+        wide
+        onClose={onClose}
+        actions={
+          <button
+            className="primary"
+            disabled={busy || !Object.keys(changes).length}
+            onClick={async () => {
+              if (!review) {
+                setReview(true);
+                return;
+              }
+              setBusy(true);
+              try {
+                await run("tracks.edit", {
+                  ids: tracks.map((t) => t.id),
+                  changes,
+                  ...(lockFields
+                    ? { addLocks: Object.keys(changes) as MetadataField[] }
+                    : {}),
+                });
+                onClose();
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {review ? "Apply changes" : "Preview changes"}
+          </button>
+        }
+      >
         <button
-          className="primary"
-          disabled={busy || !Object.keys(changes).length}
-          onClick={async () => {
-            if (!review) {
-              setReview(true);
-              return;
-            }
-            setBusy(true);
-            try {
-              await run("tracks.edit", {
-                ids: tracks.map((t) => t.id),
-                changes,
-                ...(lockFields
-                  ? { addLocks: Object.keys(changes) as MetadataField[] }
-                  : {}),
-              });
-              onClose();
-            } finally {
-              setBusy(false);
-            }
+          disabled={busy || !tracks.length}
+          onClick={() => {
+            setUndoReview(true);
+            setUndoError("");
           }}
         >
-          {review ? "Apply changes" : "Preview changes"}
+          Undo previous revisions for selected tracks…
         </button>
-      }
-    >
-      <p>
-        Only fields you enable will change. Mixed values are preserved unless
-        explicitly replaced.
-      </p>
-      {review ? (
-        <table className="review-table">
-          <thead>
-            <tr>
-              <th>Field</th>
-              <th>Before</th>
-              <th>After</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(changes).map(([key, value]) => (
-              <tr key={key}>
-                <td>{fields.find((f) => f[0] === key)?.[1]}</td>
-                <td>{common(key as MetadataField) ?? "Mixed values"}</td>
-                <td>{value || "Empty (cleared)"}</td>
+        <p>
+          Only fields you enable will change. Mixed values are preserved unless
+          explicitly replaced.
+        </p>
+        {review ? (
+          <table className="review-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Before</th>
+                <th>After</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="batch-fields">
-          {fields.map(([key, label]) => (
-            <div className="batch-field" key={key}>
-              <label className="check-line">
+            </thead>
+            <tbody>
+              {Object.entries(changes).map(([key, value]) => (
+                <tr key={key}>
+                  <td>{fields.find((f) => f[0] === key)?.[1]}</td>
+                  <td>{common(key as MetadataField) ?? "Mixed values"}</td>
+                  <td>{value || "Empty (cleared)"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="batch-fields">
+            {fields.map(([key, label]) => (
+              <div className="batch-field" key={key}>
+                <label className="check-line">
+                  <input
+                    type="checkbox"
+                    checked={key in changes}
+                    onChange={(e) =>
+                      setChanges((old) => {
+                        const next = { ...old };
+                        if (e.target.checked) next[key] = common(key) || "";
+                        else delete next[key];
+                        return next;
+                      })
+                    }
+                  />
+                  {label}
+                </label>
                 <input
-                  type="checkbox"
-                  checked={key in changes}
+                  aria-label={`Batch ${label}`}
+                  disabled={!(key in changes)}
+                  placeholder={common(key) ?? "Mixed values — unchanged"}
+                  value={changes[key] ?? ""}
                   onChange={(e) =>
-                    setChanges((old) => {
-                      const next = { ...old };
-                      if (e.target.checked) next[key] = common(key) || "";
-                      else delete next[key];
-                      return next;
-                    })
+                    setChanges((old) => ({ ...old, [key]: e.target.value }))
                   }
                 />
-                {label}
-              </label>
-              <input
-                aria-label={`Batch ${label}`}
-                disabled={!(key in changes)}
-                placeholder={common(key) ?? "Mixed values — unchanged"}
-                value={changes[key] ?? ""}
-                onChange={(e) =>
-                  setChanges((old) => ({ ...old, [key]: e.target.value }))
+              </div>
+            ))}
+          </div>
+        )}
+        <label className="check-line">
+          <input
+            type="checkbox"
+            checked={lockFields}
+            onChange={(e) => setLockFields(e.target.checked)}
+          />
+          Lock edited fields against future suggestions
+        </label>
+        {review && (
+          <button className="quiet" onClick={() => setReview(false)}>
+            Back to editing
+          </button>
+        )}
+      </Modal>
+      {undoReview && (
+        <Modal
+          title={`Undo ${tracks.length} selected track revisions`}
+          dismissible={!busy}
+          onClose={() => setUndoReview(false)}
+          actions={
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setUndoError("");
+                try {
+                  await run("tracks.undo", {
+                    ids: tracks.map((track) => track.id),
+                  });
+                  onClose();
+                } catch (error) {
+                  setUndoError(message(error));
+                } finally {
+                  setBusy(false);
                 }
-              />
-            </div>
-          ))}
-        </div>
+              }}
+            >
+              Undo selected revisions
+            </button>
+          }
+        >
+          <p>
+            Restore the previous saved metadata/audio revision for all{" "}
+            {tracks.length} selected tracks. Current unapplied edits in this
+            editor will be discarded. If any selected track has no recoverable
+            revision, the batch remains unchanged.
+          </p>
+          <ul className="file-list">
+            {tracks.map((track) => (
+              <li key={track.id}>
+                {track.metadata.title || "Untitled recording"}
+              </li>
+            ))}
+          </ul>
+          {undoError && (
+            <p className="inline-error" role="alert">
+              {undoError}
+            </p>
+          )}
+        </Modal>
       )}
-      <label className="check-line">
-        <input
-          type="checkbox"
-          checked={lockFields}
-          onChange={(e) => setLockFields(e.target.checked)}
-        />
-        Lock edited fields against future suggestions
-      </label>
-      {review && (
-        <button className="quiet" onClick={() => setReview(false)}>
-          Back to editing
-        </button>
-      )}
-    </Modal>
+    </>
   );
 }

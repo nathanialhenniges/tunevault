@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Playlist, Receipt, Target, Track } from "../../shared/types";
 import { duration, Empty, Icon } from "./ui";
-import { albumIdentity, targetState } from "./library-state";
+import {
+  albumIdentity,
+  compareAlbumTracks,
+  needsPreparation,
+  targetState,
+} from "./library-state";
 
 export function Artwork({
   track,
@@ -91,23 +96,23 @@ export default function Library({
                 (!t.metadata.artist || !t.metadata.title)) ||
               (filter === "artwork" && !t.artwork) ||
               (filter === "missing" && t.missing) ||
-              (filter === "ready" && !!target && !t.missing) ||
+              (filter === "ready" &&
+                needsPreparation(t, target, receipts, playlists)) ||
               (filter === "changed" && state === "Changed since transfer")) &&
             (!album || albumIdentity(t) === album)
           );
         })
-        .sort((a, b) =>
-          sort === "duration"
-            ? a.duration - b.duration
-            : (sort === "album"
-                ? `${a.metadata.album}\0${a.metadata.discNumber.padStart(4, "0")}\0${a.metadata.trackNumber.padStart(4, "0")}`
-                : a.metadata[sort as "title" | "artist"] || ""
-              ).localeCompare(
-                sort === "album"
-                  ? `${b.metadata.album}\0${b.metadata.discNumber.padStart(4, "0")}\0${b.metadata.trackNumber.padStart(4, "0")}`
-                  : b.metadata[sort as "title" | "artist"] || "",
-              ),
-        ),
+        .sort((a, b) => {
+          if (sort === "duration") return a.duration - b.duration;
+          if (sort === "album")
+            return (
+              albumIdentity(a).localeCompare(albumIdentity(b)) ||
+              compareAlbumTracks(a, b)
+            );
+          return (a.metadata[sort as "title" | "artist"] || "").localeCompare(
+            b.metadata[sort as "title" | "artist"] || "",
+          );
+        }),
     [tracks, search, filter, sort, target, receipts, playlists, album],
   );
   const pageCount = Math.max(1, Math.ceil(filtered.length / 100));
@@ -144,7 +149,11 @@ export default function Library({
             <button
               key={albumIdentity(t)}
               className="album-card"
-              onClick={() => setAlbum(albumIdentity(t))}
+              onClick={() => {
+                setAlbum(albumIdentity(t));
+                setSort("album");
+                setPage(0);
+              }}
             >
               <Artwork track={t} large />
               <strong>{t.metadata.album || "Unknown album"}</strong>

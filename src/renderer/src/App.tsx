@@ -57,6 +57,7 @@ export default function App() {
       "add" | "target" | "export" | "batch" | "add-playlist" | null
     >(null),
     [exportPlaylist, setExportPlaylist] = useState<string | undefined>(),
+    [exportTargetContent, setExportTargetContent] = useState(false),
     [error, setError] = useState(""),
     [status, setStatus] = useState("Opening local library…"),
     [demo, setDemo] = useState(false),
@@ -64,7 +65,11 @@ export default function App() {
     [artist, setArtist] = useState(""),
     [legal, setLegal] = useState<{ title: string; text: string } | null>(null),
     [playlistChoice, setPlaylistChoice] = useState(""),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [releaseStatus, setReleaseStatus] = useState<{
+      status: string;
+      version?: string;
+    } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null),
     initialized = useRef(false);
   const refresh = useCallback(async () => {
@@ -78,6 +83,7 @@ export default function App() {
     }
     setLoading(false);
     setStatus("Library saved locally");
+    return value as Snapshot;
   }, []);
   useEffect(() => {
     refresh().catch((e) => {
@@ -89,6 +95,16 @@ export default function App() {
     );
     return unsubscribe;
   }, [refresh]);
+  useEffect(() => {
+    const refreshRelease = () => {
+      window.tunevault
+        .invoke("updates.status")
+        .then(setReleaseStatus)
+        .catch(() => {});
+    };
+    refreshRelease();
+    return window.tunevault.onChanged(refreshRelease);
+  }, []);
   useEffect(() => {
     if (
       !snapshot.jobs.some(
@@ -160,6 +176,7 @@ export default function App() {
             "credentials.status",
             "diagnostics.preview",
             "diagnostics.export",
+            "updates.status",
             "updates.check",
             "updates.download",
             "updates.install",
@@ -174,7 +191,17 @@ export default function App() {
             "playlists.refreshPreview",
           ].includes(action)
         ) {
-          await refresh();
+          const updated = await refresh();
+          if (action === "restore") {
+            const validIds = new Set(updated.tracks.map((track) => track.id));
+            setSelected(
+              updated.settings.selection.filter((id) => validIds.has(id)),
+            );
+            setTrackView(updated.settings.view);
+            setFilter(updated.settings.filter);
+            setArtist("");
+            setInspected(null);
+          }
           setStatus("Changes saved locally");
         }
         return result;
@@ -199,16 +226,23 @@ export default function App() {
   }
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("dialog[open]"))
+      if (
+        e.key === "Escape" &&
+        !document.querySelector(
+          'dialog[open],[role="dialog"][aria-modal="true"]',
+        )
+      )
         setInspected(null);
       if (e.metaKey || e.ctrlKey) {
         if (
           e.key.toLowerCase() === "f" &&
-          !document.querySelector("dialog[open]")
+          !document.querySelector(
+            'dialog[open],[role="dialog"][aria-modal="true"]',
+          )
         ) {
           e.preventDefault();
           setView("library");
-          searchRef.current?.focus();
+          requestAnimationFrame(() => searchRef.current?.focus());
         }
         if (e.key.toLowerCase() === "o") {
           e.preventDefault();
@@ -216,7 +250,9 @@ export default function App() {
         }
         if (
           e.key.toLowerCase() === "i" &&
-          !document.querySelector("dialog[open]")
+          !document.querySelector(
+            'dialog[open],[role="dialog"][aria-modal="true"]',
+          )
         ) {
           e.preventDefault();
           if (selected[0]) setInspected(selected[0]);
@@ -233,7 +269,7 @@ export default function App() {
   const activeJobs = snapshot.jobs.filter(
     (j) => j.status === "queued" || j.status === "running",
   );
-  function prepare(playlistId?: string) {
+  function prepare(playlistId?: string, targetContent = false) {
     if (demo) {
       setError(
         "Design fixtures contain no audio. Switch to your real library to prepare files.",
@@ -241,6 +277,7 @@ export default function App() {
       return;
     }
     setExportPlaylist(playlistId);
+    setExportTargetContent(targetContent);
     setModal("export");
   }
   async function drop(e: React.DragEvent) {
@@ -369,6 +406,25 @@ export default function App() {
               </button>
             </div>
           )}
+          {releaseStatus &&
+            [
+              "available",
+              "ready-for-manual-replacement",
+              "ready-to-install",
+            ].includes(releaseStatus.status) &&
+            view !== "settings" && (
+              <div className="notice" role="status">
+                <span>
+                  {releaseStatus.status === "available"
+                    ? "Authenticated update available"
+                    : "Verified update ready"}
+                  {releaseStatus.version ? ` · ${releaseStatus.version}` : ""}
+                </span>{" "}
+                <button onClick={() => setView("settings")}>
+                  Review update…
+                </button>
+              </div>
+            )}
           {demo && (
             <div className="demo-banner">
               <span>
@@ -391,7 +447,8 @@ export default function App() {
                 <div>
                   <h1>Library</h1>
                   <p>
-                    {tracks.length.toLocaleString()} tracks
+                    {tracks.length.toLocaleString()} track
+                    {tracks.length === 1 ? "" : "s"}
                     {tracks.filter(
                       (t) => !t.metadata.title || !t.metadata.artist,
                     ).length
@@ -572,7 +629,7 @@ export default function App() {
               setTargetId={setTargetId}
               run={run}
               openSetup={() => setModal("target")}
-              prepare={() => prepare()}
+              prepare={() => prepare(undefined, true)}
             />
           )}
           {view === "activity" && (
@@ -607,7 +664,8 @@ export default function App() {
                         <strong>
                           {job.payload.compatibilityTest === true
                             ? "Synthetic compatibility test"
-                            : job.kind[0].toUpperCase() + job.kind.slice(1)}{" "}
+                            : job.kind[0].toUpperCase() +
+                              job.kind.slice(1)}{" "}
                           <span
                             className={
                               job.status === "failed" ? "warning" : "muted"
@@ -617,6 +675,26 @@ export default function App() {
                           </span>
                         </strong>
                         <p>{job.message || "Waiting to start"}</p>
+                        {Array.isArray(job.payload.failures) &&
+                          job.payload.failures.length > 0 && (
+                            <details>
+                              <summary>
+                                {job.payload.failures.length} input failures
+                              </summary>
+                              <ul className="file-list">
+                                {job.payload.failures.map(
+                                  (failure: any, index: number) => (
+                                    <li key={index}>
+                                      {failure.title ||
+                                        failure.path?.split(/[\\/]/).pop() ||
+                                        `Entry ${failure.ordinal || index + 1}`}{" "}
+                                      — {failure.error || "Processing failed"}
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            </details>
+                          )}
                         {job.status === "running" && (
                           <progress
                             max={1}
@@ -692,7 +770,8 @@ export default function App() {
               : status}
           </span>
           <span className="tabular">
-            {tracks.length.toLocaleString()} tracks · {selected.length} selected
+            {tracks.length.toLocaleString()} track
+            {tracks.length === 1 ? "" : "s"} · {selected.length} selected
           </span>
           <span>Local library</span>
         </footer>
@@ -711,7 +790,11 @@ export default function App() {
             snapshot={snapshot}
             targetId={target?.id || ""}
             trackIds={
-              selected.length ? selected : snapshot.tracks.map((t) => t.id)
+              exportTargetContent
+                ? undefined
+                : selected.length
+                  ? selected
+                  : snapshot.tracks.map((t) => t.id)
             }
             playlistId={exportPlaylist}
             run={run}

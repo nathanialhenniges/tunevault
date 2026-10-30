@@ -6,7 +6,12 @@ import type {
   Target,
   Track,
 } from "../../shared/types";
-import { albumIdentity, targetState } from "./library-state";
+import {
+  albumIdentity,
+  compareAlbumTracks,
+  needsPreparation,
+  targetState,
+} from "./library-state";
 const track = {
   id: "track",
   metadata: {
@@ -93,4 +98,75 @@ describe("library identity and target evidence", () => {
       targetState({ ...track, missing: true }, target, [receipt], [playlist]),
     ).toBe("Missing file");
   });
+});
+
+describe("album order and pending preparation", () => {
+  it("uses numeric disc and track ordinals when opening an album", () => {
+    const numbered = (
+      discNumber: string,
+      trackNumber: string,
+      title: string,
+    ) => ({
+      ...track,
+      metadata: { ...track.metadata, discNumber, trackNumber, title },
+    });
+    const rows = [
+      numbered("2", "1", "A"),
+      numbered("1", "10", "B"),
+      numbered("1", "2", "Z"),
+      numbered("", "", "Untitled"),
+    ];
+    expect(
+      rows.sort(compareAlbumTracks).map((row) => row.metadata.title),
+    ).toEqual(["Z", "B", "Untitled", "A"]);
+  });
+  it("excludes every current receipt state and includes stale or unprepared target work", () => {
+    for (const evidence of [
+      "ready-locally",
+      "exported",
+      "user-confirmed",
+      "volume-verified",
+    ] as const)
+      expect(
+        needsPreparation(track, target, [{ ...receipt, evidence }], [playlist]),
+      ).toBe(false);
+    expect(needsPreparation(track, target, [], [playlist])).toBe(true);
+    expect(
+      needsPreparation(
+        track,
+        target,
+        [receipt],
+        [{ ...playlist, revision: 5 }],
+      ),
+    ).toBe(true);
+    expect(needsPreparation({ ...track, missing: true }, target, [], [])).toBe(
+      false,
+    );
+    expect(needsPreparation(track, undefined, [], [])).toBe(false);
+  });
+});
+
+it("checks every saved playlist revision and the target's saved ordering", () => {
+  const second = { id: "second", revision: 2 } as Playlist;
+  const scoped = { ...target, playlistIds: ["playlist", "second"] };
+  const combined = { ...receipt, playlistRevision: "playlist:4|second:2" };
+  expect(targetState(track, scoped, [combined], [playlist, second])).toBe(
+    "User-confirmed transfer",
+  );
+  expect(
+    targetState(
+      track,
+      scoped,
+      [combined],
+      [playlist, { ...second, revision: 3 }],
+    ),
+  ).toBe("Changed since transfer");
+  expect(
+    targetState(
+      track,
+      { ...scoped, playlistIds: ["second", "playlist"] },
+      [combined],
+      [playlist, second],
+    ),
+  ).toBe("Changed since transfer");
 });

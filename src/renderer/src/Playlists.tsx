@@ -3,6 +3,7 @@ import type { Occurrence, Playlist, Snapshot } from "../../shared/types";
 import type { Run } from "./Inspector";
 import { Artwork } from "./Library";
 import { duration, Empty, Icon, message, Modal } from "./ui";
+import { RefreshReview } from "./refresh-review";
 
 export default function Playlists({
   snapshot,
@@ -429,7 +430,7 @@ export default function Playlists({
               preserved.
             </p>
           )}
-          <pre className="diff-preview">{JSON.stringify(diff, null, 2)}</pre>
+          <RefreshReview diff={diff} />
         </Modal>
       )}
     </>

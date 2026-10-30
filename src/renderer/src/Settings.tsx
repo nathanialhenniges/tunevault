@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Settings as AppSettings } from "../../shared/types";
 import type { Run } from "./Inspector";
-import { message } from "./ui";
+import { message, Modal } from "./ui";
 import logo from "./assets/branding/tunevault-wolf-concept.png";
 
 export default function Settings({
@@ -24,9 +24,18 @@ export default function Settings({
     [reportBusy, setReportBusy] = useState(false),
     [reportError, setReportError] = useState(""),
     [reportSaved, setReportSaved] = useState(false),
+    [restorePath, setRestorePath] = useState<string | null>(null),
+    [restoreResult, setRestoreResult] = useState<{
+      restored: number;
+      missing: number;
+      recoveryBackup: string;
+    } | null>(null),
+    [restoreBusy, setRestoreBusy] = useState(false),
+    [restoreError, setRestoreError] = useState(""),
     [update, setUpdate] = useState<any>(null),
     [includeMedia, setIncludeMedia] = useState(false),
     [updateBusy, setUpdateBusy] = useState(false),
+    [downloadPending, setDownloadPending] = useState(false),
     [credentials, setCredentials] = useState<{
       connected: boolean;
       secureStorage: boolean;
@@ -41,6 +50,15 @@ export default function Settings({
       .then(setCredentials)
       .catch((error) => setCredentialError(message(error)));
   }, []);
+  useEffect(() => {
+    const refreshStatus = () => {
+      run("updates.status")
+        .then(setUpdate)
+        .catch(() => {});
+    };
+    refreshStatus();
+    return window.tunevault.onChanged(refreshStatus);
+  }, [run]);
   async function changeCredentials(action: "connect" | "disconnect") {
     setCredentialBusy(true);
     setCredentialError("");
@@ -140,12 +158,36 @@ export default function Settings({
             <button
               onClick={async () => {
                 const path = await run("chooseRestore");
-                if (path) await run("restore", { path });
+                if (path) {
+                  setRestorePath(path);
+                  setRestoreError("");
+                  setRestoreResult(null);
+                }
               }}
             >
               Restore validated backup…
             </button>
           </div>
+          {restoreResult && (
+            <div className="result-box" role="status">
+              <strong>
+                Restored {restoreResult.restored} track
+                {restoreResult.restored === 1 ? "" : "s"}
+              </strong>
+              <p>
+                {restoreResult.missing} media files are missing. Relink missing
+                files without deleting playlist history.
+              </p>
+              <label className="field">
+                Recovery backup
+                <input readOnly value={restoreResult.recoveryBackup} />
+              </label>
+              <p className="small muted">
+                Keep this recovery bundle until you have checked the restored
+                library.
+              </p>
+            </div>
+          )}
           <p className="small muted">
             An index-only backup is not an audio backup. Restore validates
             temporary state before replacing the current index.
@@ -227,7 +269,14 @@ export default function Settings({
           </p>
           <div className="button-row">
             <button
-              disabled={updateBusy}
+              disabled={
+                updateBusy ||
+                [
+                  "downloading",
+                  "ready-for-manual-replacement",
+                  "ready-to-install",
+                ].includes(update?.status)
+              }
               onClick={async () => {
                 setUpdateBusy(true);
                 try {
@@ -245,9 +294,11 @@ export default function Settings({
                 onClick={async () => {
                   setUpdateBusy(true);
                   try {
+                    setDownloadPending(true);
                     setUpdate(await run("updates.download"));
                   } finally {
                     setUpdateBusy(false);
+                    setDownloadPending(false);
                   }
                 }}
               >
@@ -271,13 +322,18 @@ export default function Settings({
                   : "Reveal verified DMG"}
               </button>
             )}
-            {updateBusy && (
-              <button onClick={() => run("updates.cancel")}>
-                Cancel update operation
+            {(downloadPending || update?.status === "downloading") && (
+              <button
+                onClick={async () => {
+                  await run("updates.cancel");
+                  setUpdate(await run("updates.status"));
+                }}
+              >
+                Cancel download
               </button>
             )}
           </div>
-          {updateBusy && (
+          {(updateBusy || update?.status === "downloading") && (
             <p className="muted" role="status">
               Checking or downloading authenticated release…
             </p>
@@ -287,6 +343,9 @@ export default function Settings({
               <strong>
                 {(
                   {
+                    unchecked: "No release check this session.",
+                    downloading:
+                      "Downloading the authenticated installer. It is not ready to install yet.",
                     "not-configured":
                       "Authenticated updates need the publisher’s release public key before use.",
                     current:
@@ -467,6 +526,58 @@ export default function Settings({
           </p>
         </section>
       </div>
+      {restorePath && (
+        <Modal
+          title="Review library restore"
+          dismissible={!restoreBusy}
+          onClose={() => {
+            if (!restoreBusy) setRestorePath(null);
+          }}
+          actions={
+            <button
+              className="primary"
+              disabled={restoreBusy}
+              onClick={async () => {
+                setRestoreBusy(true);
+                setRestoreError("");
+                try {
+                  const result = await run("restore", { path: restorePath });
+                  setRestoreResult(result);
+                  setRestorePath(null);
+                } catch (error) {
+                  setRestoreError(message(error));
+                } finally {
+                  setRestoreBusy(false);
+                }
+              }}
+            >
+              Restore selected backup
+            </button>
+          }
+        >
+          <p>
+            This replaces the current library index, settings and receipts with
+            the selected backup after validation. A recovery bundle of the
+            current state is saved first. Existing audio files are preserved.
+          </p>
+          <label className="field">
+            Selected backup folder
+            <input readOnly value={restorePath} />
+          </label>
+          <p className="small muted">
+            An index-only backup cannot restore missing audio. Review the
+            selected folder before continuing.
+          </p>
+          {restoreBusy && (
+            <p role="status">Validating and restoring the selected backup…</p>
+          )}
+          {restoreError && (
+            <p className="inline-error" role="alert">
+              {restoreError}
+            </p>
+          )}
+        </Modal>
+      )}
     </>
   );
 }

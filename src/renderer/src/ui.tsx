@@ -116,12 +116,14 @@ export function Modal({
   actions,
   onClose,
   wide = false,
+  dismissible = true,
 }: {
   title: string;
   children: ReactNode;
   actions?: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  dismissible?: boolean;
 }) {
   const error = useContext(OperationErrorContext);
   const titleId = useId();
@@ -138,7 +140,7 @@ export function Modal({
       className={wide ? "modal wide" : "modal"}
       onCancel={(e) => {
         e.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
       aria-labelledby={titleId}
     >
@@ -147,6 +149,7 @@ export function Modal({
         <button
           className="icon-button quiet"
           onClick={onClose}
+          disabled={!dismissible}
           aria-label={`Close ${title}`}
         >
           <Icon name="close" />
@@ -161,7 +164,9 @@ export function Modal({
         {children}
       </div>
       <footer className="modal-actions">
-        <button onClick={onClose}>Cancel</button>
+        <button onClick={onClose} disabled={!dismissible}>
+          Cancel
+        </button>
         {actions}
       </footer>
     </dialog>

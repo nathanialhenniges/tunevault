@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ProviderPreview, Settings } from "../../shared/types";
 import type { Run } from "./Inspector";
 import { bytes, Icon, message, Modal } from "./ui";
+import {
+  selectedSpotifyPlaylist,
+  spotifyPlaylistChoices,
+} from "./reference-selection";
 
 export default function AddDialog({
   settings,
@@ -20,6 +24,22 @@ export default function AddDialog({
   const [format, setFormat] = useState("tsv");
   const [text, setText] = useState("");
   const [name, setName] = useState("Imported playlist");
+  const [spotifyIndex, setSpotifyIndex] = useState("");
+  const spotify = useMemo(() => {
+    if (format !== "spotify-json" || !text.trim())
+      return { choices: [], error: "" };
+    try {
+      return { choices: spotifyPlaylistChoices(text), error: "" };
+    } catch (error) {
+      return { choices: [], error: message(error) };
+    }
+  }, [format, text]);
+  const selectedIndex =
+    spotify.choices.length === 1
+      ? 0
+      : spotifyIndex === ""
+        ? null
+        : Number(spotifyIndex);
   const [ack, setAck] = useState(settings.onlineAcknowledged);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -92,10 +112,28 @@ export default function AddDialog({
           {tab === "references" && (
             <button
               className="primary"
-              disabled={busy || !text.trim() || !name.trim()}
+              disabled={
+                busy ||
+                !text.trim() ||
+                !name.trim() ||
+                (format === "spotify-json" &&
+                  (!!spotify.error || selectedIndex === null))
+              }
               onClick={() =>
                 execute(async () => {
-                  await run("references.import", { name, text, format });
+                  const chosenText =
+                    format === "spotify-json"
+                      ? selectedSpotifyPlaylist(text, selectedIndex!)
+                      : text;
+                  const chosenName =
+                    format === "spotify-json" && name === "Imported playlist"
+                      ? spotify.choices[selectedIndex!].name
+                      : name;
+                  await run("references.import", {
+                    name: chosenName,
+                    text: chosenText,
+                    format,
+                  });
                   onClose();
                 })
               }
@@ -273,7 +311,10 @@ export default function AddDialog({
               Reference format
               <select
                 value={format}
-                onChange={(e) => setFormat(e.target.value)}
+                onChange={(e) => {
+                  setFormat(e.target.value);
+                  setSpotifyIndex("");
+                }}
               >
                 <option value="tsv">Tab-separated columns</option>
                 <option value="csv">CSV</option>
@@ -290,12 +331,46 @@ export default function AddDialog({
             <textarea
               rows={10}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                setText(e.target.value);
+                setSpotifyIndex("");
+              }}
               placeholder={
                 "title\tartist\talbum\tduration\turl\nSong title\tArtist name\tAlbum\t240\t"
               }
             />
           </label>
+          {format === "spotify-json" && spotify.choices.length > 1 && (
+            <label className="field">
+              Choose one Spotify playlist
+              <select
+                value={spotifyIndex}
+                onChange={(event) => {
+                  setSpotifyIndex(event.target.value);
+                  if (event.target.value !== "")
+                    setName(spotify.choices[Number(event.target.value)].name);
+                }}
+              >
+                <option value="">Select a playlist</option>
+                {spotify.choices.map((playlist, index) => (
+                  <option key={index} value={index}>
+                    {playlist.name} · {playlist.count} occurrences
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {format === "spotify-json" && spotify.choices.length > 0 && (
+            <p className="small muted">
+              Only the selected playlist's name and items will be imported.
+              Other playlists and account fields are excluded.
+            </p>
+          )}
+          {format === "spotify-json" && spotify.error && (
+            <p className="inline-error" role="alert">
+              {spotify.error}
+            </p>
+          )}
           <p className="small muted">
             CSV/TSV columns: title, artist, album, duration (seconds), optional
             url. Spotify/Apple imports are snapshots, not live sync.

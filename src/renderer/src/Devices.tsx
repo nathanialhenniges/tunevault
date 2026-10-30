@@ -10,7 +10,7 @@ import type {
 } from "../../shared/types";
 import type { Run } from "./Inspector";
 import { bytes, Empty, Icon, message, Modal } from "./ui";
-import { receiptIsCurrent } from "./library-state";
+import { receiptIsCurrent, targetState } from "./library-state";
 
 const transports: Record<Transport, string> = {
   imazing: "iMazing / Apple-library handoff",
@@ -48,6 +48,12 @@ export default function Devices({
   prepare: () => void;
 }) {
   const [tab, setTab] = useState("overview");
+  const [destinationChange, setDestinationChange] = useState<{
+    targetId: string;
+    before: string;
+    after: string;
+  } | null>(null);
+  const [destinationBusy, setDestinationBusy] = useState(false);
   const target =
     snapshot.targets.find((t) => t.id === targetId) || snapshot.targets[0];
   const receipts = snapshot.receipts.filter((r) => r.targetId === target?.id);
@@ -156,6 +162,19 @@ export default function Devices({
                     Prepare files…
                   </button>
                   <button
+                    onClick={async () => {
+                      const chosen = await run("chooseTargetFolder");
+                      if (chosen)
+                        setDestinationChange({
+                          targetId: target.id,
+                          before: target.destination,
+                          after: chosen,
+                        });
+                    }}
+                  >
+                    Change destination…
+                  </button>
+                  <button
                     onClick={() => run("reveal", { targetId: target.id })}
                   >
                     Reveal destination
@@ -224,67 +243,255 @@ export default function Devices({
               </>
             )}
             {tab === "content" && (
-              <>
-                <p className="muted">
-                  This target's receipts apply only to the exact metadata and
-                  profile revisions below. Old history remains available after
-                  edits.
-                </p>
-                <table className="review-table">
-                  <thead>
-                    <tr>
-                      <th>Track</th>
-                      <th>Revision</th>
-                      <th>Evidence</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {receipts.map((r) => (
-                      <tr key={r.id}>
-                        <td>
-                          {snapshot.tracks.find((t) => t.id === r.trackId)
-                            ?.metadata.title || "Missing track"}
-                        </td>
-                        <td>
-                          {r.trackRevision} / profile {r.profileRevision}
-                        </td>
-                        <td>
-                          {evidence[r.evidence]}
-                          {(() => {
-                            const track = snapshot.tracks.find(
-                              (t) => t.id === r.trackId,
-                            );
-                            return (
-                              !track ||
-                              !receiptIsCurrent(
-                                track,
-                                target,
-                                r,
-                                snapshot.playlists,
-                              )
-                            );
-                          })()
-                            ? " · changed"
-                            : ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!receipts.length && (
-                  <p>No content has been prepared for this target.</p>
-                )}
-              </>
+              <TargetContent
+                key={target.id}
+                snapshot={snapshot}
+                target={target}
+                run={run}
+                prepare={prepare}
+              />
             )}
             {tab === "compatibility" && (
-              <Compatibility key={target.id} target={target} jobs={snapshot.jobs} run={run} />
+              <Compatibility
+                key={target.id}
+                target={target}
+                jobs={snapshot.jobs}
+                run={run}
+              />
             )}
           </article>
         </div>
       )}
+      {destinationChange && (
+        <Modal
+          title="Change target destination"
+          onClose={() => setDestinationChange(null)}
+          actions={
+            <button
+              className="primary"
+              disabled={destinationBusy}
+              onClick={async () => {
+                setDestinationBusy(true);
+                try {
+                  await run("targets.update", {
+                    id: destinationChange.targetId,
+                    destination: destinationChange.after,
+                  });
+                  setDestinationChange(null);
+                } finally {
+                  setDestinationBusy(false);
+                }
+              }}
+            >
+              Use selected destination
+            </button>
+          }
+        >
+          <p>
+            Future exports will use the newly selected folder. Existing exported
+            files and transfer history are preserved. The destination identity
+            will be reviewed again before writing.
+          </p>
+          <dl className="property-list">
+            <dt>Previous folder</dt>
+            <dd className="path-text">{destinationChange.before}</dd>
+            <dt>New folder</dt>
+            <dd className="path-text">{destinationChange.after}</dd>
+          </dl>
+        </Modal>
+      )}
     </>
   );
 }
+function TargetContent({
+  snapshot,
+  target,
+  run,
+  prepare,
+}: {
+  snapshot: Snapshot;
+  target: Target;
+  run: Run;
+  prepare: () => void;
+}) {
+  const [chosen, setChosen] = useState(target.playlistIds);
+  const [filter, setFilter] = useState("pending");
+  const [page, setPage] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const savedPlaylists = snapshot.playlists.filter((playlist) =>
+    target.playlistIds.includes(playlist.id),
+  );
+  const trackIds = new Set(
+    savedPlaylists.flatMap((playlist) =>
+      playlist.entries
+        .filter((entry) => !entry.skipped && entry.trackId)
+        .map((entry) => entry.trackId),
+    ),
+  );
+  const content = target.playlistIds.length
+    ? snapshot.tracks.filter((track) => trackIds.has(track.id))
+    : snapshot.tracks;
+  const rows = content.map((track) => ({
+    track,
+    state: targetState(track, target, snapshot.receipts, snapshot.playlists),
+  }));
+  const pending = rows.filter((row) =>
+    ["Not prepared", "Changed since transfer", "Missing file"].includes(
+      row.state,
+    ),
+  );
+  const changed = rows.filter((row) => row.state === "Changed since transfer");
+  const visible =
+    filter === "pending" ? pending : filter === "changed" ? changed : rows;
+  const pages = Math.max(1, Math.ceil(visible.length / 100));
+  const currentPage = Math.min(page, pages - 1);
+  const omissions = savedPlaylists.flatMap((playlist) =>
+    playlist.entries
+      .map((entry, index) => ({ entry, index, playlist }))
+      .filter((row) => !row.entry.trackId || row.entry.skipped),
+  );
+  const dirty = JSON.stringify(chosen) !== JSON.stringify(target.playlistIds);
+  return (
+    <>
+      <h3>Content for this target</h3>
+      <p className="small muted">
+        Choose playlists, or leave all unchecked to use the whole library.
+        Exports preserve playlist occurrences and order; the table lists unique
+        tracks.
+      </p>
+      {snapshot.playlists.map((playlist) => (
+        <label className="check-line" key={playlist.id}>
+          <input
+            type="checkbox"
+            checked={chosen.includes(playlist.id)}
+            onChange={(event) =>
+              setChosen(
+                event.target.checked
+                  ? [...chosen, playlist.id]
+                  : chosen.filter((id) => id !== playlist.id),
+              )
+            }
+          />
+          {playlist.name}
+          <span className="muted">{playlist.entries.length} occurrences</span>
+        </label>
+      ))}
+      <div className="button-row">
+        <button
+          disabled={!dirty || busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await run("targets.update", {
+                id: target.id,
+                playlistIds: chosen,
+              });
+              setPage(0);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Save selected playlists
+        </button>
+        <button className="primary" disabled={dirty} onClick={prepare}>
+          Review saved target export…
+        </button>
+      </div>
+      {dirty && (
+        <p className="small warning">
+          Save the playlist selection before reviewing its export.
+        </p>
+      )}
+      <h3>Saved target content</h3>
+      <p>
+        {pending.length} pending · {changed.length} changed · {rows.length}{" "}
+        unique tracks
+      </p>
+      <label className="field">
+        Show target content
+        <select
+          value={filter}
+          onChange={(event) => {
+            setFilter(event.target.value);
+            setPage(0);
+          }}
+        >
+          <option value="pending">Pending preparation / missing file</option>
+          <option value="changed">Changed since transfer</option>
+          <option value="all">All saved target content</option>
+        </select>
+      </label>
+      <table className="review-table">
+        <thead>
+          <tr>
+            <th>Track</th>
+            <th>Target status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible
+            .slice(currentPage * 100, currentPage * 100 + 100)
+            .map(({ track, state }) => (
+              <tr key={track.id}>
+                <td>
+                  {track.metadata.title}
+                  <span className="small muted">
+                    {" "}
+                    — {track.metadata.artist || "Unknown artist"}
+                  </span>
+                </td>
+                <td>{state}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+      {!visible.length && (
+        <p className="muted">No tracks match this target-content filter.</p>
+      )}
+      {pages > 1 && (
+        <div className="pagination">
+          <button
+            disabled={!currentPage}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            Previous
+          </button>
+          <span>
+            Page {currentPage + 1} of {pages}
+          </span>
+          <button
+            disabled={currentPage + 1 === pages}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            Next
+          </button>
+        </div>
+      )}
+      {omissions.length > 0 && (
+        <>
+          <h3>Unresolved / skipped occurrences</h3>
+          <ol className="reference-list">
+            {omissions.slice(0, 100).map(({ entry, index, playlist }) => (
+              <li key={entry.id}>
+                {playlist.name} · position {index + 1}:{" "}
+                {entry.reference.title || "Unavailable item"} —{" "}
+                {entry.skipped ? "Skipped" : "No approved local recording"}
+              </li>
+            ))}
+          </ol>
+          {omissions.length > 100 && (
+            <p>
+              {omissions.length} omissions; open the playlist to inspect all
+              occurrences.
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 function ConfirmTransfer({
   target,
   batchId,
@@ -338,7 +545,15 @@ function ConfirmTransfer({
     </>
   );
 }
-function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run: Run }) {
+function Compatibility({
+  target,
+  jobs,
+  run,
+}: {
+  target: Target;
+  jobs: Job[];
+  run: Run;
+}) {
   const [model, setModel] = useState(target.profile.model),
     [firmware, setFirmware] = useState(target.profile.firmware),
     [format, setFormat] = useState<Format>(target.profile.format),
@@ -346,9 +561,16 @@ function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run
     [queuedTest, setQueuedTest] = useState<Job | null>(null),
     [testBusy, setTestBusy] = useState(false),
     [testError, setTestError] = useState("");
-  const testJob = jobs.find((job) => job.id === queuedTest?.id) ||
-    jobs.filter((job) => job.payload.compatibilityTest === true && job.payload.targetId === target.id)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] || queuedTest;
+  const testJob =
+    jobs.find((job) => job.id === queuedTest?.id) ||
+    jobs
+      .filter(
+        (job) =>
+          job.payload.compatibilityTest === true &&
+          job.payload.targetId === target.id,
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ||
+    queuedTest;
   const testActive = testJob && ["queued", "running"].includes(testJob.status);
   return (
     <>
@@ -369,7 +591,9 @@ function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run
             setTestBusy(true);
             setTestError("");
             try {
-              setQueuedTest(await run("targets.testPack", { targetId: target.id }));
+              setQueuedTest(
+                await run("targets.testPack", { targetId: target.id }),
+              );
             } catch (error) {
               setTestError(message(error));
             } finally {
@@ -381,9 +605,7 @@ function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run
         </button>
         {testJob && (
           <div className="result-box">
-            <p role="status">
-              Synthetic compatibility test · {testJob.status}
-            </p>
+            <p role="status">Synthetic compatibility test · {testJob.status}</p>
             <p className={testJob.status === "failed" ? "warning" : "muted"}>
               {testJob.message || "Queued; test files are not ready yet."}
             </p>
@@ -394,7 +616,11 @@ function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run
             )}
           </div>
         )}
-        {testError && <p className="inline-error" role="alert">{testError}</p>}
+        {testError && (
+          <p className="inline-error" role="alert">
+            {testError}
+          </p>
+        )}
         <p className="small muted">
           Transfer the pack using this target's normal method. Only after
           checking the physical player, record its model, firmware, artwork,
@@ -465,12 +691,7 @@ function Compatibility({ target, jobs, run }: { target: Target; jobs: Job[]; run
         onClick={() =>
           run("targets.update", {
             id: target.id,
-            name: target.name,
-            transport: target.transport,
-            destination: target.destination,
-            budget: target.budget,
             profile: {
-              ...target.profile,
               format,
               model,
               firmware,
@@ -645,7 +866,7 @@ export function ExportDialog({
 }: {
   snapshot: Snapshot;
   targetId: string;
-  trackIds: string[];
+  trackIds?: string[];
   playlistId?: string;
   run: Run;
   onClose: () => void;
@@ -659,7 +880,7 @@ export function ExportDialog({
     [done, setDone] = useState<any>(null);
   const input = {
     targetId: chosen,
-    ...(playlistId ? { playlistId } : { trackIds }),
+    ...(playlistId ? { playlistId } : trackIds ? { trackIds } : {}),
   };
   const target = snapshot.targets.find((t) => t.id === chosen);
   const job = done ? snapshot.jobs.find((j) => j.id === done.id) || done : null;
@@ -679,7 +900,11 @@ export function ExportDialog({
         !done && (
           <button
             className="primary"
-            disabled={!chosen || busy || (!playlistId && !trackIds.length)}
+            disabled={
+              !chosen ||
+              busy ||
+              (!playlistId && trackIds !== undefined && !trackIds.length)
+            }
             onClick={async () => {
               setBusy(true);
               setError("");
