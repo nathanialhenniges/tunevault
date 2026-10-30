@@ -353,7 +353,7 @@ export default function App() {
           ))}
           <div className="sidebar-group-label saved-label">Saved filters</div>
           <div className="saved-filters">
-            {filters.slice(1).map(([value, label]) => (
+            {filters.map(([value, label]) => (
               <button
                 key={value}
                 className={
