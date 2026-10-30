@@ -1,4 +1,6 @@
 {
   "schema": 1,
-  "publicKeys": []
+  "publicKeys": [
+    "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxJRPM1HSBiAOIbTg7OOlZqY+sju93nFzhMrFPmFbfoo=\n-----END PUBLIC KEY-----\n"
+  ]
 }

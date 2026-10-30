@@ -1,6 +1,6 @@
 # Update trust and owner setup
 
-Production update checks are disabled until an owner-provided Ed25519 public key is committed in `resources/update-keys.json`. The current empty `publicKeys` array fails closed. No production key was generated for this rebuild.
+Production update checks trust the owner's Ed25519 public key committed in `resources/update-keys.json` (added 2026-10-30). An empty `publicKeys` array fails closed. The matching private key exists only as the `RELEASE_SIGN_PRIVATE_KEY` secret in the protected `release-signing` environment; no local copy was kept. If that secret is lost, follow the lost-key recovery path under Rotation and recovery.
 
 The release signature authenticates updates to an already trusted installation. It is separate from Apple/Microsoft code signing and does not remove Gatekeeper, unknown-publisher or SmartScreen warnings. First-install trust still depends on obtaining the installer from the official repository. A compromised release-signing workflow or private key can authorize a malicious update.
 
