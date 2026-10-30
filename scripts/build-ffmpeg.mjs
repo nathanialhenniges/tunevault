@@ -163,7 +163,10 @@ for (const name of ["ffmpeg", "ffprobe"]) {
   if (windows) {
     const imports = execFileSync(
       bash,
-      ["-lc", `objdump -p '${posix(join(root, name + exe))}'`],
+      [
+        "-lc",
+        `objdump -p '${posix(join(root, name + exe))}' | grep 'DLL Name'`,
+      ],
       { encoding: "utf8", env: { ...process.env, MSYSTEM: "MINGW64" } },
     );
     const dlls = [...imports.matchAll(/DLL Name:\s*(\S+)/g)].map((m) => m[1]);
