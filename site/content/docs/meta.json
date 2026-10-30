@@ -1,0 +1,20 @@
+{
+  "title": "Docs",
+  "pages": [
+    "---Start here---",
+    "index",
+    "install",
+    "first-launch",
+    "---Using TuneVault---",
+    "library",
+    "metadata",
+    "playlists",
+    "devices",
+    "backup",
+    "settings",
+    "updates",
+    "---Help---",
+    "troubleshooting",
+    "legal"
+  ]
+}

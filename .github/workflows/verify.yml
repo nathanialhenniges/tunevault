@@ -1,8 +1,10 @@
 name: Verify native applications
 on:
   pull_request:
+    paths-ignore: ["site/**", ".github/workflows/pages.yml"]
   push:
     branches: [main]
+    paths-ignore: ["site/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
   workflow_call:
 permissions:

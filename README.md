@@ -5,6 +5,8 @@ and x64 PCs running Windows 10+. Import owned audio,
 review metadata, keep ordered playlists and prepare files for portable players.
 Nathanial Henniges personally maintains and publishes the app.
 
+The user guide is at [nathanialhenniges.github.io/tunevault](https://nathanialhenniges.github.io/tunevault/).
+
 ## Features
 
 - **Local library:** SQLite persistence, copied imports, search, albums,
@@ -23,8 +25,8 @@ Nathanial Henniges personally maintains and publishes the app.
 
 Direct Spotify/Apple connectors require a permitted implementation and real
 provider access. Their exported playlist references work offline. Direct MTP
-and physical-player compatibility are not claimed. Public update checks fail
-closed until an owner production key is configured. See
+and physical-player compatibility are not claimed. Update checks trust only the
+committed owner public key. See
 [verification](docs/verification.md) for the checks actually run.
 
 ## Getting Started
@@ -132,6 +134,7 @@ build/          Icon Composer project and platform icon derivatives
 scripts/        Tool, package, installer and release gates
 tests/         Unit, integration and packaged/installed E2E
 docs/          Architecture, backup, legal and release guidance
+site/          Fumadocs user guide for GitHub Pages
 ```
 
 ## License

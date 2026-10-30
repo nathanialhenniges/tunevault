@@ -1,0 +1,50 @@
+name: Deploy docs site
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/privacy-policy.md"
+      - "docs/terms-of-use.md"
+      - "docs/third-party-notices.md"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24.13.0"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run types:check
+      - run: npm run build
+        env:
+          PAGES_BASE_PATH: /tunevault
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
+        with:
+          path: site/out
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346
