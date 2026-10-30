@@ -46,7 +46,7 @@ The source fixtures under `tests/fixtures/update-test-*` are disposable public t
 
 The native verification workflow builds production candidates once for Apple Silicon Macs on macOS 15+ and Windows 10+ x64 PCs, tests their packaged resources/UI, then exercises separate installed-upgrade fixtures. The evidence records the production candidate's filename, size and SHA-512. An unsuccessful or missing matrix leg blocks the release workflow. CI runner versions do not establish verification on the oldest supported OS.
 
-The manual **Prepare or promote verified release** workflow defaults `publish` to false. It collects all three candidates, adds release notes/notices, signs one envelope, validates it, and uploads an authenticated candidate artifact. `scripts/release-envelope.mjs` requires the private key to derive one of the committed public keys. Its exact UTF-8 bytes are signed before any client parses the JSON.
+The manual **Prepare or promote verified release** workflow defaults `publish` to false. It collects both candidates, adds release notes/notices, signs one envelope, validates it, and uploads an authenticated candidate artifact. `scripts/release-envelope.mjs` requires the private key to derive one of the committed public keys. Its exact UTF-8 bytes are signed before any client parses the JSON.
 
 For an owner-approved local signing run with the protected key already loaded into `RELEASE_SIGN_PRIVATE_KEY`:
 
@@ -55,7 +55,7 @@ node scripts/release-envelope.mjs dist/release-candidate
 node scripts/check-release.mjs dist/release-candidate
 ```
 
-These commands do not upload anything. The expected directory contains the exact tested `TuneVault-<version>-mac-arm64.dmg`, `TuneVault-<version>-mac-x64.dmg`, `TuneVault-<version>-win-x64.exe`, platform evidence JSON files, release notes, license and third-party notices. Package, tag, installer and envelope versions must agree. Native installed-upgrade evidence and matching artifact hashes are required.
+These commands do not upload anything. The expected directory contains the exact tested `TuneVault-<version>-mac-arm64.dmg`, `TuneVault-<version>-win-x64.exe`, platform evidence JSON files, release notes, license and third-party notices. Package, tag, installer and envelope versions must agree. Native installed-upgrade evidence and matching artifact hashes are required.
 
 Publication requires a separate owner action, an existing reviewed `v<version>` tag, a dispatch with `publish=true`, and the protected publication environment. `scripts/publish-release.mjs` uses `gh release create --verify-tag`, uploads the complete candidate, downloads the public result again and reruns the release checks. It never pushes a tag. Do not approve publication while a corresponding-source, platform or hardware claim remains unsupported.
 
