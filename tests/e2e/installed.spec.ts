@@ -20,7 +20,9 @@ test("installed data survives the native upgrade", async () => {
     const info = await page.evaluate(() => window.tunevault.invoke("app.info"));
     expect(info.packaged).toBe(true);
     const sentinel = join(dataDir, "upgrade-assertions.json");
-    if (process.env.TUNEVAULT_UPGRADE_PHASE === "seed") {
+    if (["seed", "production"].includes(process.env.TUNEVAULT_UPGRADE_PHASE!)) {
+      if (process.env.TUNEVAULT_UPGRADE_PHASE === "production")
+        expect(info.version).toBe(process.env.TUNEVAULT_PRODUCTION_VERSION);
       const vault = join(dataDir, "vault"),
         destination = join(dataDir, "device");
       await mkdir(vault, { recursive: true });

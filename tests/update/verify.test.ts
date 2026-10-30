@@ -15,7 +15,7 @@ import {
   verifyTools,
   ytDlpArgs,
 } from "../../src/update/tools";
-import { UpdateService } from "../../src/update/service";
+import { UpdateService, boundedFetch } from "../../src/update/service";
 
 const pair = generateKeyPairSync("ed25519");
 const publicKey = pair.publicKey
@@ -231,6 +231,11 @@ describe("production update authentication", () => {
       vi.stubGlobal("fetch", async () => new Response(installer));
       const result = await service.download();
       expect(result.status).toBe("ready-for-manual-replacement");
+      expect(service.status().path).toBe(result.path);
+      expect((await service.check()).status).toBe(
+        "ready-for-manual-replacement",
+      );
+      expect(service.status().path).toBe(result.path);
       await expect(service.verifiedDownload()).resolves.toBe(result.path);
       await writeFile(result.path, Buffer.alloc(installer.length));
       await expect(service.verifiedDownload()).rejects.toThrow("digest");
@@ -250,6 +255,44 @@ describe("production update authentication", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+});
+
+it("allows a progressing long update body and rejects an idle stream", async () => {
+  vi.useFakeTimers();
+  try {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (let index = 1; index <= 3; index++)
+                setTimeout(() => {
+                  controller.enqueue(Uint8Array.of(index));
+                  if (index === 3) controller.close();
+                }, index * 60000);
+            },
+          }),
+        ),
+    );
+    const progressing = expect(boundedFetch(asset.url, 3)).resolves.toEqual(
+      Buffer.from([1, 2, 3]),
+    );
+    await vi.advanceTimersByTimeAsync(181000);
+    await progressing;
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response(new ReadableStream({ start() {} })),
+    );
+    const stalled = expect(boundedFetch(asset.url, 3)).rejects.toThrow(
+      "stalled",
+    );
+    await vi.advanceTimersByTimeAsync(121000);
+    await stalled;
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });
 
 describe("sidecar architecture and invocation", () => {

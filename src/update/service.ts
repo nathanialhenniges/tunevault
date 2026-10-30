@@ -32,12 +32,19 @@ async function updateResponse(
       current.port
     )
       throw new Error("Update URL host rejected");
-    const response = await fetch(current, {
-      redirect: "manual",
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
-        : AbortSignal.timeout(120_000),
-    });
+    const headersTimeout = new AbortController();
+    const timer = setTimeout(() => headersTimeout.abort(), 120_000);
+    let response: Response;
+    try {
+      response = await fetch(current, {
+        redirect: "manual",
+        signal: signal
+          ? AbortSignal.any([signal, headersTimeout.signal])
+          : headersTimeout.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("location");
       await response.body?.cancel();
@@ -54,6 +61,33 @@ async function updateResponse(
   throw new Error("Too many update redirects");
 }
 
+async function* responseChunks(response: Response) {
+  const reader = response.body!.getReader();
+  try {
+    for (;;) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const result = await Promise.race([
+          reader.read(),
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => {
+              reject(new Error("Update download stalled"));
+              void reader.cancel();
+            }, 120_000);
+          }),
+        ]);
+        if (result.done) break;
+        yield result.value;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
 export async function boundedFetch(
   url: string,
   max: number,
@@ -62,7 +96,7 @@ export async function boundedFetch(
   const response = await updateResponse(url, max, signal);
   const chunks: Buffer[] = [];
   let total = 0;
-  for await (const value of response.body as unknown as AsyncIterable<Uint8Array>) {
+  for await (const value of responseChunks(response)) {
     total += value.length;
     if (total > max) throw new Error("Update response exceeds limit");
     chunks.push(Buffer.from(value));
@@ -75,6 +109,7 @@ export class UpdateService {
   private downloaded: string | null = null;
   private cancellation: AbortController | null = null;
   private updater: import("electron-updater").NsisUpdater | null = null;
+  private checked = false;
   constructor(
     private options: UpdateContext & {
       cacheDir: string;
@@ -84,6 +119,31 @@ export class UpdateService {
       windowsUpdater?: () => Promise<import("electron-updater").NsisUpdater>;
     },
   ) {}
+
+  status() {
+    return {
+      status: this.cancellation
+        ? "downloading"
+        : this.downloaded
+          ? this.options.platform === "darwin"
+            ? "ready-for-manual-replacement"
+            : "ready-to-install"
+          : this.release
+            ? "available"
+            : !this.options.publicKeys.length
+              ? "not-configured"
+              : this.checked
+                ? "current"
+                : "unchecked",
+      ...(this.release
+        ? {
+            version: this.release.envelope.version,
+            notes: this.release.envelope.notes,
+          }
+        : {}),
+      ...(this.downloaded ? { path: this.downloaded } : {}),
+    };
+  }
 
   async check(): Promise<{ status: string; version?: string; notes?: string }> {
     if (this.cancellation)
@@ -101,20 +161,17 @@ export class UpdateService {
     const signature = signatureText.toString("ascii").trim();
     if (!/^[A-Za-z0-9+/]{86}==$/.test(signature))
       throw new Error("Invalid release signature encoding");
+    const previous = this.release;
     this.release = verifyEnvelope(
       bytes,
       Buffer.from(signature, "base64"),
       this.options.publicKeys,
       this.options,
     );
-    this.downloaded = null;
-    return this.release
-      ? {
-          status: "available",
-          version: this.release.envelope.version,
-          notes: this.release.envelope.notes,
-        }
-      : { status: "current" };
+    this.checked = true;
+    if (JSON.stringify(previous) !== JSON.stringify(this.release))
+      this.downloaded = null;
+    return this.status();
   }
 
   async download(): Promise<{ status: string; path: string; version: string }> {
@@ -170,7 +227,7 @@ export class UpdateService {
             this.cancellation.signal,
           );
           let written = 0;
-          for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+          for await (const chunk of responseChunks(response)) {
             written += chunk.length;
             if (written > release.asset.size)
               throw new Error("Installer exceeds authenticated size");
