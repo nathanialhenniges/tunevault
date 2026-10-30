@@ -353,7 +353,6 @@ export default function Library({
         <span>
           {filtered.length.toLocaleString()} track
           {filtered.length === 1 ? "" : "s"}
-          {selected.length ? ` · ${selected.length} selected` : ""}
         </span>
         {filtered.length > 100 && (
           <div className="button-row">

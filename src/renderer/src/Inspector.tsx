@@ -20,6 +20,24 @@ export const fields: [MetadataField, string][] = [
   ["musicbrainzId", "MusicBrainz ID"],
 ];
 export type Run = (action: string, input?: unknown) => Promise<any>;
+// Field provenance is stored as a token such as "musicbrainz:<id>".
+export function originLabel(origin?: string) {
+  if (!origin) return "Unknown source";
+  const [service] = origin.split(":");
+  const known: Record<string, string> = {
+    unknown: "Unknown source",
+    musicbrainz: "From MusicBrainz",
+    coverartarchive: "From Cover Art Archive",
+    "approved-lookup": "From an approved lookup",
+    "existing-tags": "From the file's tags",
+    user: "Edited by you",
+    "user-confirmed": "Confirmed by you",
+  };
+  return (
+    known[service] ||
+    service.charAt(0).toUpperCase() + service.slice(1).replaceAll("-", " ")
+  );
+}
 export default function Inspector({
   track,
   onClose,
@@ -273,9 +291,7 @@ export default function Inspector({
                 }
               />
               Lock {label.toLowerCase()}
-              <span className="muted">
-                {track.origins[key] || "Unknown origin"}
-              </span>
+              <span className="muted">{originLabel(track.origins[key])}</span>
             </label>
           ))}
         </details>

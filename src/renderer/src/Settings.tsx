@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Settings as AppSettings } from "../../shared/types";
 import type { Run } from "./Inspector";
 import { Icon, message, Modal } from "./ui";
+import MetadataSettings from "./MetadataSettings";
 
 export const settingsPanes = [
   ["general", "General", "settings"],
@@ -279,63 +280,66 @@ export default function Settings({
           </>
         )}
         {pane === "sources" && (
-          <section>
-            <h2>Cookie credentials</h2>
-            <p className="muted">
-              Optional exported YouTube cookies can authorize requested source
-              operations. TuneVault does not automatically collect browser
-              cookies.
-            </p>
-            <div className="notice">
-              <strong>Cookies can act as account credentials.</strong>
-              <p>
-                Connect only a Netscape-format cookies.txt file you
-                intentionally exported for YouTube. Keep it private; never
-                attach it to a public issue. Connecting credentials does not
-                grant rights to download media.
+          <>
+            <MetadataSettings settings={settings} run={run} />
+            <section>
+              <h2>Cookie credentials</h2>
+              <p className="muted">
+                Optional exported YouTube cookies can authorize requested source
+                operations. TuneVault does not automatically collect browser
+                cookies.
               </p>
-            </div>
-            <p role="status">
-              {credentials?.connected
-                ? "Connected for requested YouTube operations"
-                : credentials
-                  ? "Not connected"
-                  : "Checking local credential status…"}
-            </p>
-            {credentials && !credentials.secureStorage && (
-              <p className="warning">
-                OS secure credential storage is unavailable. Connecting cookies
-                is disabled.
-              </p>
-            )}
-            <div className="button-row">
-              <button
-                disabled={credentialBusy || !credentials?.secureStorage}
-                onClick={() => changeCredentials("connect")}
-              >
+              <div className="notice">
+                <strong>Cookies can act as account credentials.</strong>
+                <p>
+                  Connect only a Netscape-format cookies.txt file you
+                  intentionally exported for YouTube. Keep it private; never
+                  attach it to a public issue. Connecting credentials does not
+                  grant rights to download media.
+                </p>
+              </div>
+              <p role="status">
                 {credentials?.connected
-                  ? "Replace exported YouTube cookies…"
-                  : "Connect exported YouTube cookies…"}
-              </button>
-              <button
-                disabled={credentialBusy || !credentials?.connected}
-                onClick={() => changeCredentials("disconnect")}
-              >
-                Disconnect and remove saved credentials
-              </button>
-            </div>
-            <p className="small muted">
-              The native file picker and confirmation keep credentials opt-in.
-              Saved cookies use OS-backed encryption. Disconnect removes
-              TuneVault's encrypted copy and temporary plaintext; your original
-              export remains yours to manage.
-            </p>
-            {credentialError && (
-              <p className="inline-error" role="alert">
-                {credentialError}
+                  ? "Connected for requested YouTube operations"
+                  : credentials
+                    ? "Not connected"
+                    : "Checking local credential status…"}
               </p>
-            )}
-          </section>
+              {credentials && !credentials.secureStorage && (
+                <p className="warning">
+                  OS secure credential storage is unavailable. Connecting
+                  cookies is disabled.
+                </p>
+              )}
+              <div className="button-row">
+                <button
+                  disabled={credentialBusy || !credentials?.secureStorage}
+                  onClick={() => changeCredentials("connect")}
+                >
+                  {credentials?.connected
+                    ? "Replace exported YouTube cookies…"
+                    : "Connect exported YouTube cookies…"}
+                </button>
+                <button
+                  disabled={credentialBusy || !credentials?.connected}
+                  onClick={() => changeCredentials("disconnect")}
+                >
+                  Disconnect and remove saved credentials
+                </button>
+              </div>
+              <p className="small muted">
+                The native file picker and confirmation keep credentials opt-in.
+                Saved cookies use OS-backed encryption. Disconnect removes
+                TuneVault's encrypted copy and temporary plaintext; your
+                original export remains yours to manage.
+              </p>
+              {credentialError && (
+                <p className="inline-error" role="alert">
+                  {credentialError}
+                </p>
+              )}
+            </section>
+          </>
         )}
         {pane === "updates" && (
           <section>
