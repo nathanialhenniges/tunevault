@@ -120,9 +120,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
     await page
       .getByRole("button", { name: "Devices & exports", exact: true })
       .click();
-    await page
-      .getByRole("button", { name: "Compatibility", exact: true })
-      .click();
+    await page.getByRole("tab", { name: "Compatibility", exact: true }).click();
     await page.getByLabel("Model", { exact: true }).fill("Test model");
     await page.getByLabel("Firmware / iOS version").fill("1.0");
     await page
@@ -142,7 +140,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
       )
       .toBe("Test model");
     await expect(page.locator(".error-banner")).toHaveCount(0);
-    await page.getByRole("button", { name: "Overview", exact: true }).click();
+    await page.getByRole("tab", { name: "Overview", exact: true }).click();
     await choose(app, replacement, "chooseTargetFolder");
     await page
       .getByRole("button", { name: "Change destination…", exact: true })
@@ -166,7 +164,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
         ),
       )
       .toBe(await realpath(replacement));
-    await page.getByRole("button", { name: "Content", exact: true }).click();
+    await page.getByRole("tab", { name: "Content", exact: true }).click();
     await page.getByRole("checkbox", { name: /Target-only playlist/ }).check();
     await page
       .getByRole("button", { name: "Save selected playlists", exact: true })

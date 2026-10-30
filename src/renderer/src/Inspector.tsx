@@ -217,16 +217,44 @@ export default function Inspector({
         </div>
         <details>
           <summary>More tags & field locks</summary>
-          {fields.slice(3).map(([key, label]) => (
-            <label className="field" key={key}>
-              {label}
-              <input
-                value={changes[key] ?? track.metadata[key]}
-                disabled={track.demo}
-                onChange={(e) => update(key, e.target.value)}
-              />
-            </label>
-          ))}
+          {fields.slice(3).map(([key, label]) => {
+            // Number and total share one row, as in a native Get Info panel.
+            if (key === "trackTotal" || key === "discTotal") return null;
+            if (key === "trackNumber" || key === "discNumber") {
+              const total = key === "trackNumber" ? "trackTotal" : "discTotal";
+              const name = key === "trackNumber" ? "Track" : "Disc";
+              return (
+                <div className="field number-pair" key={key}>
+                  <span>{name}</span>
+                  <input
+                    aria-label={label}
+                    inputMode="numeric"
+                    value={changes[key] ?? track.metadata[key]}
+                    disabled={track.demo}
+                    onChange={(e) => update(key, e.target.value)}
+                  />
+                  <span className="muted">of</span>
+                  <input
+                    aria-label={`${name} total`}
+                    inputMode="numeric"
+                    value={changes[total] ?? track.metadata[total]}
+                    disabled={track.demo}
+                    onChange={(e) => update(total, e.target.value)}
+                  />
+                </div>
+              );
+            }
+            return (
+              <label className="field" key={key}>
+                {label}
+                <input
+                  value={changes[key] ?? track.metadata[key]}
+                  disabled={track.demo}
+                  onChange={(e) => update(key, e.target.value)}
+                />
+              </label>
+            );
+          })}
           <p className="small muted">
             Locked fields take precedence over suggested metadata.
           </p>

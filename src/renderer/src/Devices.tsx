@@ -9,7 +9,7 @@ import type {
   Transport,
 } from "../../shared/types";
 import type { Run } from "./Inspector";
-import { bytes, Empty, Icon, message, Modal } from "./ui";
+import { bytes, Empty, Icon, message, Modal, Tabs } from "./ui";
 import { receiptIsCurrent, targetState } from "./library-state";
 
 const transports: Record<Transport, string> = {
@@ -109,18 +109,18 @@ export default function Devices({
                   : target.profile.compatibility}
               </span>
             </header>
-            <div className="tabs">
-              {["overview", "content", "compatibility"].map((value) => (
-                <button
-                  key={value}
-                  className={tab === value ? "selected" : ""}
-                  aria-pressed={tab === value}
-                  onClick={() => setTab(value)}
-                >
-                  {value[0].toUpperCase() + value.slice(1)}
-                </button>
-              ))}
-            </div>
+            <Tabs
+              label="Device sections"
+              value={tab}
+              options={
+                [
+                  ["overview", "Overview"],
+                  ["content", "Content"],
+                  ["compatibility", "Compatibility"],
+                ] as const
+              }
+              onChange={setTab}
+            />
             {tab === "overview" && (
               <>
                 <dl className="property-list">

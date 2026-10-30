@@ -1268,6 +1268,16 @@ details:not([open]) summary {
 .playlist-table td {
   height: var(--row-h);
 }
+/* Reorder and remove controls stay on one line. */
+.playlist-table td .button-row {
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+}
+.playlist-table td .icon-button {
+  width: var(--control-h-sm);
+  min-height: var(--control-h-sm);
+  padding: 0;
+}
 .requested-reference {
   padding: 12px;
   background: var(--bg);
@@ -2030,4 +2040,10 @@ button.link:hover:not(:disabled) {
 .track-table tbody tr.selected .favorite,
 .track-table .favorite:focus-visible {
   opacity: 1;
+}
+.field.number-pair {
+  display: grid;
+  grid-template-columns: 48px 64px auto 64px;
+  align-items: center;
+  gap: var(--space-2);
 }

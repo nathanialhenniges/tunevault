@@ -217,3 +217,51 @@ export const bytes = (value: number) =>
       : `${Math.round(value / 1024)} KB`;
 export const message = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
+
+// Segmented tabs with native tab semantics and arrow-key navigation.
+export function Tabs<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly (readonly [T, string])[];
+  onChange: (value: T) => void;
+}) {
+  const refs = useRef<Record<string, HTMLButtonElement | null>>({});
+  return (
+    <div
+      className="segmented"
+      role="tablist"
+      aria-label={label}
+      onKeyDown={(e) => {
+        const step =
+          e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+        if (!step) return;
+        e.preventDefault();
+        const ids = options.map(([id]) => id);
+        const next = ids[(ids.indexOf(value) + step + ids.length) % ids.length];
+        onChange(next);
+        refs.current[next]?.focus();
+      }}
+    >
+      {options.map(([id, text]) => (
+        <button
+          key={id}
+          ref={(element) => {
+            refs.current[id] = element;
+          }}
+          role="tab"
+          aria-selected={value === id}
+          tabIndex={value === id ? 0 : -1}
+          className={value === id ? "selected" : ""}
+          onClick={() => onChange(id)}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+}

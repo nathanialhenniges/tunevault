@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AddInput } from "./Welcome";
 import type { ProviderPreview, Settings } from "../../shared/types";
 import type { Run } from "./Inspector";
-import { bytes, Icon, message, Modal } from "./ui";
+import { bytes, Icon, message, Modal, Tabs } from "./ui";
 import {
   selectedSpotifyPlaylist,
   spotifyPlaylistChoices,
@@ -180,25 +180,21 @@ export default function AddDialog({
         </>
       }
     >
-      <div className="tabs" aria-label="Add method">
-        {[
-          ["files", "Local files"],
-          ["source", "Paste a link"],
-          ["references", "Playlist file"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            className={tab === value ? "selected" : ""}
-            aria-pressed={tab === value}
-            onClick={() => {
-              setTab(value as typeof tab);
-              setError("");
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Add method"
+        value={tab}
+        options={
+          [
+            ["files", "Local files"],
+            ["source", "Paste a link"],
+            ["references", "Playlist file"],
+          ] as const
+        }
+        onChange={(value) => {
+          setTab(value);
+          setError("");
+        }}
+      />
       {tab === "files" && (
         <>
           <div className="drop-prompt">
