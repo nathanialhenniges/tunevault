@@ -1433,7 +1433,7 @@ export class LibraryService {
         Object.entries(changes).filter(
           ([key]) =>
             (fieldOrigins[key as MetadataField] || origin) === "user" ||
-            !track.locks.includes(key as MetadataField),
+            !(locks ?? track.locks).includes(key as MetadataField),
         ),
       );
       const updated: Track = {
