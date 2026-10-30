@@ -2010,3 +2010,24 @@ button.link:hover:not(:disabled) {
 :root[data-platform="win32"] .demo-banner {
   padding-right: 140px;
 }
+
+/* Track list: native row selection, list focus ring, star on hover. */
+.track-table tbody tr {
+  cursor: default;
+}
+.track-table:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.track-table:focus tbody tr.selected,
+.track-table tbody tr.selected {
+  background: var(--selected);
+}
+.track-table .favorite:not(.is-favorite) {
+  opacity: 0;
+}
+.track-table tbody tr:hover .favorite,
+.track-table tbody tr.selected .favorite,
+.track-table .favorite:focus-visible {
+  opacity: 1;
+}

@@ -220,12 +220,8 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
     await expect(
       page.locator(".track-table tbody .track-name strong"),
     ).toHaveText(["Z first", "M second", "A tenth"]);
-    await page
-      .getByRole("checkbox", {
-        name: "Select tracks on this page",
-        exact: true,
-      })
-      .check();
+    await page.getByRole("grid", { name: "Tracks" }).focus();
+    await page.keyboard.press("ControlOrMeta+a");
     await page.getByRole("button", { name: "Edit tags…", exact: true }).click();
     await page
       .getByRole("dialog")
@@ -302,10 +298,10 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
       .click();
     await expect(page.locator(".track-table tbody tr")).toHaveCount(2);
     await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setSize(1024, 768),
+      BrowserWindow.getAllWindows()[0].setSize(740, 720),
     );
     const opener = page.locator(".track-name").first();
-    await opener.click();
+    await opener.dblclick();
     const sheet = page.getByRole("dialog", {
       name: "Track details",
       exact: true,

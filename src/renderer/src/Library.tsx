@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Playlist, Receipt, Target, Track } from "../../shared/types";
 import { duration, Empty, Icon } from "./ui";
 import {
@@ -62,6 +62,7 @@ export default function Library({
   setSort,
   onAddMusic,
   hasVault,
+  inspecting = false,
 }: {
   tracks: Track[];
   selected: string[];
@@ -78,6 +79,7 @@ export default function Library({
   setSort: (v: string) => void;
   onAddMusic: () => void;
   hasVault: boolean;
+  inspecting?: boolean;
 }) {
   const [page, setPage] = useState(0);
   const [album, setAlbum] = useState<string | null>(null);
@@ -122,8 +124,59 @@ export default function Library({
   const pageCount = Math.max(1, Math.ceil(filtered.length / 100));
   const actualPage = Math.min(page, pageCount - 1);
   const visible = filtered.slice(actualPage * 100, actualPage * 100 + 100);
-  const allSelected =
-    visible.length > 0 && visible.every((t) => selected.includes(t.id));
+  // Native list selection: click, Shift-click ranges, Cmd/Ctrl-click
+  // toggles, arrow keys move, and details follow the selection when open.
+  const anchor = useRef<string | null>(null);
+  const cursor = useRef<string | null>(null);
+  function choose(id: string, extend: boolean, toggle: boolean) {
+    const ids = filtered.map((t) => t.id);
+    let next: string[];
+    if (extend && anchor.current && ids.includes(anchor.current)) {
+      const [from, to] = [ids.indexOf(anchor.current), ids.indexOf(id)].sort(
+        (a, b) => a - b,
+      );
+      next = ids.slice(from, to + 1);
+    } else if (toggle) {
+      next = selected.includes(id)
+        ? selected.filter((item) => item !== id)
+        : [...selected, id];
+      anchor.current = id;
+    } else {
+      next = [id];
+      anchor.current = id;
+    }
+    cursor.current = id;
+    setSelected(next);
+    if (inspecting && next.length === 1) inspect(next[0]);
+    const index = ids.indexOf(id);
+    if (index >= 0 && Math.floor(index / 100) !== actualPage)
+      setPage(Math.floor(index / 100));
+    requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-track-id="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ block: "nearest" }),
+    );
+  }
+  function onListKey(e: React.KeyboardEvent) {
+    const ids = filtered.map((t) => t.id);
+    if (!ids.length) return;
+    const current = cursor.current ?? selected.at(-1) ?? null;
+    const at = current ? ids.indexOf(current) : -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const next = Math.min(
+        ids.length - 1,
+        Math.max(0, at + (e.key === "ArrowDown" ? 1 : -1)),
+      );
+      choose(ids[at < 0 ? 0 : next], e.shiftKey, false);
+    } else if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
+      setSelected(ids);
+    } else if (e.key === "Enter" && current) {
+      inspect(current);
+    } else if (e.key === "Escape") {
+      setSelected([]);
+    } else return;
+    e.preventDefault();
+  }
   const albums = useMemo(
     () => [...new Map(filtered.map((t) => [albumIdentity(t), t])).values()],
     [filtered],
@@ -180,30 +233,16 @@ export default function Library({
         </div>
       ) : (
         <div className="table-scroll">
-          <table className="track-table">
+          <table
+            className="track-table"
+            role="grid"
+            aria-label="Tracks"
+            aria-multiselectable="true"
+            tabIndex={0}
+            onKeyDown={onListKey}
+          >
             <thead>
               <tr>
-                <th className="checkbox-cell">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    aria-label="Select tracks on this page"
-                    onChange={(e) =>
-                      setSelected(
-                        e.target.checked
-                          ? [
-                              ...new Set([
-                                ...selected,
-                                ...visible.map((t) => t.id),
-                              ]),
-                            ]
-                          : selected.filter(
-                              (id) => !visible.some((t) => t.id === id),
-                            ),
-                      )
-                    }
-                  />
-                </th>
                 <th scope="col">
                   <button
                     className="column-sort"
@@ -246,27 +285,20 @@ export default function Library({
               {visible.map((t) => (
                 <tr
                   key={t.id}
+                  data-track-id={t.id}
                   className={selected.includes(t.id) ? "selected" : ""}
+                  aria-selected={selected.includes(t.id)}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest(".favorite")) return;
+                    choose(t.id, e.shiftKey, e.metaKey || e.ctrlKey);
+                  }}
                   onDoubleClick={() => inspect(t.id)}
                 >
-                  <td className="checkbox-cell">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${t.metadata.title}`}
-                      checked={selected.includes(t.id)}
-                      onChange={(e) =>
-                        setSelected(
-                          e.target.checked
-                            ? [...selected, t.id]
-                            : selected.filter((id) => id !== t.id),
-                        )
-                      }
-                    />
-                  </td>
                   <td>
                     <button
                       className="track-name"
-                      onClick={() => inspect(t.id)}
+                      tabIndex={-1}
+                      onDoubleClick={() => inspect(t.id)}
                     >
                       <Artwork track={t} />
                       <span>

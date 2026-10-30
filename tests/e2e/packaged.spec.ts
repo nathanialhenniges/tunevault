@@ -221,7 +221,7 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
       .getByRole("button", { name: "Library", exact: false })
       .first()
       .click();
-    await page.locator("button.track-name").first().click();
+    await page.locator("button.track-name").first().dblclick();
     await page
       .locator("summary")
       .filter({ hasText: /^Artwork$/ })

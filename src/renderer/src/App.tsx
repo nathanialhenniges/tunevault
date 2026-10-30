@@ -763,6 +763,7 @@ export default function App() {
                   setSort={setSort}
                   onAddMusic={() => startAdd()}
                   hasVault={!!snapshot.settings.vault}
+                  inspecting={!!inspected}
                   onFavorite={(t: Track) =>
                     guardedRun("tracks.favorite", {
                       ids: [t.id],

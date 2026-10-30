@@ -33,10 +33,10 @@ export default function Inspector({
 }) {
   const panel = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(
-    () => matchMedia("(max-width: 1199px)").matches,
+    () => matchMedia("(max-width: 760px)").matches,
   );
   useEffect(() => {
-    const media = matchMedia("(max-width: 1199px)");
+    const media = matchMedia("(max-width: 760px)");
     const changed = () => setNarrow(media.matches);
     media.addEventListener("change", changed);
     return () => media.removeEventListener("change", changed);

@@ -93,7 +93,7 @@ test("10k indexed tracks, narrow keyboard and zoom rendering", async () => {
     await page
       .locator("button.track-name")
       .filter({ hasText: "Fixture 09999" })
-      .click();
+      .dblclick();
     await expect(
       page.getByRole("button", { name: "Close track details" }),
     ).toBeVisible();
