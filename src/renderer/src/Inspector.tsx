@@ -78,6 +78,11 @@ export default function Inspector({
     };
   }, [narrow]);
   const [changes, setChanges] = useState<Partial<Metadata>>({});
+  // Review tokens for fields taken from a lookup; the core validates them and
+  // records the service as the field's origin instead of "user".
+  const [lookupSources, setLookupSources] = useState<
+    Partial<Record<MetadataField, string>>
+  >({});
   const [locks, setLocks] = useState<MetadataField[]>(track.locks);
   const [preview, setPreview] = useState(false);
   const [lookups, setLookups] = useState<any[]>([]);
@@ -119,6 +124,7 @@ export default function Inspector({
     setMetadataBusy(false);
     setMetadataError("");
     setChanges({});
+    setLookupSources({});
     setLocks(track.locks);
     setLookups([]);
     setChapters(null);
@@ -128,13 +134,26 @@ export default function Inspector({
       void run("lookup.cancel").catch(() => {});
     };
   }, [track.id, track.revision]);
-  const update = (field: MetadataField, value: string) =>
+  const update = (field: MetadataField, value: string) => {
     setChanges((old) => ({ ...old, [field]: value }));
+    // A manual edit replaces the suggestion, so the field becomes the user's.
+    setLookupSources(({ [field]: _replaced, ...rest }) => rest);
+  };
+  const applySuggestion = (field: MetadataField, result: any) => {
+    setChanges((old) => ({ ...old, [field]: result[field] }));
+    setLookupSources((old) => ({ ...old, [field]: result.token }));
+  };
   async function save() {
     setBusy(true);
     try {
-      await run("tracks.edit", { ids: [track.id], changes, locks });
+      await run("tracks.edit", {
+        ids: [track.id],
+        changes,
+        locks,
+        ...(Object.keys(lookupSources).length ? { lookupSources } : {}),
+      });
       setChanges({});
+      setLookupSources({});
       setPreview(false);
     } finally {
       setBusy(false);
@@ -483,9 +502,13 @@ export default function Inspector({
                   .map((key) => (
                     <button
                       key={key}
-                      onClick={() =>
-                        setChanges((old) => ({ ...old, [key]: result[key] }))
+                      disabled={!result.token || locks.includes(key)}
+                      title={
+                        locks.includes(key)
+                          ? `${key} is locked; unlock it to use a suggestion`
+                          : undefined
                       }
+                      onClick={() => applySuggestion(key, result)}
                     >
                       Use {key}
                     </button>
