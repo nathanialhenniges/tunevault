@@ -75,6 +75,7 @@ for (const [kind, required] of [
     "decoders",
     ["mp3", "aac", "alac", "flac", "opus", "vorbis", "png", "mjpeg"],
   ],
+  ["muxers", ["mp3", "ipod", "flac", "wav", "aiff", "adts", "ogg"]],
 ]) {
   const output = execFileSync(
     join(root, `ffmpeg${process.platform === "win32" ? ".exe" : ""}`),
@@ -89,5 +90,5 @@ for (const [kind, required] of [
       throw new Error(`Required FFmpeg ${kind} missing: ${codec}`);
 }
 console.log(
-  "Required MP3/AAC/ALAC/FLAC/artwork codecs and Opus/Vorbis input capabilities present.",
+  "Required MP3/AAC/ALAC/FLAC/artwork codecs, output containers and Opus/Vorbis input capabilities present.",
 );

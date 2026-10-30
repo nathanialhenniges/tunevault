@@ -44,7 +44,32 @@ jobs:
       - name: Assert native runner architecture
         run: node -e "if(process.platform!=='${{ matrix.platform }}'||process.arch!=='${{ matrix.arch }}')process.exit(1)"
       - run: npm ci
+      # The controlled LGPL FFmpeg build is reused until its recipe changes.
+      - name: Restore controlled FFmpeg build
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/ffmpeg*
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/ffprobe*
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/*.tar.gz
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/lame.LICENSE
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/mingw-w64-runtime.LICENSE
+            resources/tools/${{ matrix.platform }}-${{ matrix.arch }}/build-ffmpeg.mjs
+          key: ffmpeg-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('scripts/build-ffmpeg.mjs') }}
+      - name: Install MinGW toolchain for the FFmpeg build
+        if: matrix.platform == 'win32' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        id: msys2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            make diffutils tar
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils mingw-w64-x86_64-zlib
       - run: node scripts/prepare-tools.mjs ${{ matrix.platform }} ${{ matrix.arch }}
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
       - run: npm run tools:verify
       - name: Verify native icon catalog
         if: runner.os == 'macOS'

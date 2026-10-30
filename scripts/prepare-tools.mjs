@@ -96,9 +96,12 @@ for (const entry of entries) {
     });
   }
 }
-if (platform === "darwin") {
+if (platform === "darwin" || platform === "win32") {
   if (process.platform !== platform || process.arch !== arch)
-    throw new Error("macOS FFmpeg must be built on its native architecture");
+    throw new Error(
+      "FFmpeg must be built on its native platform and architecture",
+    );
+  const exe = platform === "win32" ? ".exe" : "";
   try {
     const build = JSON.parse(
       await readFile(join(root, "ffmpeg-build.json"), "utf8"),
@@ -107,12 +110,12 @@ if (platform === "darwin") {
       .update(await readFile(new URL("./build-ffmpeg.mjs", import.meta.url)))
       .digest("hex");
     if (
-      build.version !== lock.macFFmpegBuild.version ||
+      build.version !== lock.ffmpegBuild.version ||
       build.recipeSHA256 !== recipeSHA256
     )
       throw new Error("Rebuild required");
     for (const name of ["ffmpeg", "ffprobe"]) {
-      const output = execFileSync(join(root, name), ["-version"], {
+      const output = execFileSync(join(root, name + exe), ["-version"], {
         encoding: "utf8",
         env: { ...process.env, PATH: "" },
       });
@@ -128,16 +131,16 @@ if (platform === "darwin") {
     await readFile(join(root, "ffmpeg-build.json"), "utf8"),
   );
   for (const name of ["ffmpeg", "ffprobe"]) {
-    const path = join(root, name),
+    const path = join(root, name + exe),
       bytes = await readFile(path);
     manifest.entries.push({
       name,
-      file: name,
+      file: name + exe,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       size: bytes.length,
-      version: lock.macFFmpegBuild.version,
+      version: lock.ffmpegBuild.version,
       sourceUrl: ffmpegBuild.sources[0].url,
-      license: lock.macFFmpegBuild.license,
+      license: lock.ffmpegBuild.license,
     });
   }
 }

@@ -5,10 +5,22 @@ import { execFileSync } from "node:child_process";
 import { cpus, tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 
-if (process.platform !== "darwin")
+const windows = process.platform === "win32";
+if (!windows && process.platform !== "darwin")
   throw new Error(
-    "This controlled FFmpeg build is for native macOS; Windows uses the pinned GPL binary",
+    "The controlled FFmpeg build supports native macOS and Windows",
   );
+// Windows builds run the same autotools recipe inside MSYS2's MINGW64 shell.
+const bash = windows
+  ? join(process.env.MSYS2_ROOT || "C:\\msys64", "usr", "bin", "bash.exe")
+  : null;
+const posix = (path) =>
+  windows
+    ? path
+        .replace(/^([A-Za-z]):/, (_, drive) => `/${drive.toLowerCase()}`)
+        .replaceAll("\\", "/")
+    : path;
+const exe = windows ? ".exe" : "";
 const root = resolve("resources/tools", `${process.platform}-${process.arch}`);
 const work = resolve(
   process.env.TUNEVAULT_BUILD_DIR ||
@@ -60,20 +72,44 @@ for (const source of archives) {
   if (createHash("sha256").update(bytes).digest("hex") !== source.sha256)
     throw new Error("FFmpeg source archive digest mismatch");
   await writeFile(path, bytes);
-  execFileSync("/usr/bin/tar", ["-xf", path, "-C", work]);
+  if (windows)
+    execFileSync(
+      bash,
+      ["-lc", `tar -xf '${posix(path)}' -C '${posix(work)}'`],
+      {
+        env: { ...process.env, MSYSTEM: "MINGW64" },
+      },
+    );
+  else execFileSync("/usr/bin/tar", ["-xf", path, "-C", work]);
   await copyFile(path, join(root, source.file));
 }
 const jobs = String(Math.min(8, cpus().length));
 const buildEnv = { ...process.env, MACOSX_DEPLOYMENT_TARGET: "14.0" };
+const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 const run = (file, args, cwd, env = buildEnv) =>
-  execFileSync(file, args, { cwd, env, stdio: "inherit" });
+  windows
+    ? execFileSync(
+        bash,
+        [
+          "-lc",
+          [file === "/usr/bin/make" ? "make" : file, ...args]
+            .map(quote)
+            .join(" "),
+        ],
+        {
+          cwd,
+          env: { ...env, MSYSTEM: "MINGW64", CHERE_INVOKING: "1" },
+          stdio: "inherit",
+        },
+      )
+    : execFileSync(file, args, { cwd, env, stdio: "inherit" });
 const lame = join(work, "lame-3.100");
 if (existsSync(join(lame, "Makefile")))
   run("/usr/bin/make", ["distclean"], lame);
 run(
   "./configure",
   [
-    `--prefix=${prefix}`,
+    `--prefix=${posix(prefix)}`,
     "--disable-shared",
     "--enable-static",
     "--disable-frontend",
@@ -89,7 +125,7 @@ if ((await readFile(join(ffmpeg, "RELEASE"), "utf8")).trim() !== "8.0.1")
 if (existsSync(join(ffmpeg, "ffbuild/config.mak")))
   run("/usr/bin/make", ["distclean"], ffmpeg);
 const flags = [
-  `--prefix=${prefix}`,
+  `--prefix=${posix(prefix)}`,
   "--disable-shared",
   "--enable-static",
   "--disable-doc",
@@ -106,8 +142,10 @@ const flags = [
   "--enable-swresample",
   "--enable-libmp3lame",
   "--enable-zlib",
-  `--extra-cflags=-I${prefix}/include`,
-  `--extra-ldflags=-L${prefix}/lib`,
+  `--extra-cflags=-I${posix(prefix)}/include`,
+  // Windows links the MinGW runtime statically so no compiler DLLs ship.
+  `--extra-ldflags=-L${posix(prefix)}/lib${windows ? " -static" : ""}`,
+  ...(windows ? ["--enable-w32threads"] : []),
   "--enable-protocol=file,pipe",
   "--enable-decoder=aac,aac_latm,alac,flac,mp3,mp3float,opus,vorbis,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_s16be,pcm_s24be,pcm_s32be,pcm_f32be,png,mjpeg,bmp,webp,wrapped_avframe",
   "--enable-encoder=aac,alac,flac,libmp3lame,pcm_s16le,pcm_s16be,png,mjpeg",
@@ -121,7 +159,21 @@ const flags = [
 run("./configure", flags, ffmpeg);
 run("/usr/bin/make", ["-j", jobs], ffmpeg);
 for (const name of ["ffmpeg", "ffprobe"]) {
-  await copyFile(join(ffmpeg, name), join(root, name));
+  await copyFile(join(ffmpeg, name + exe), join(root, name + exe));
+  if (windows) {
+    const imports = execFileSync(
+      bash,
+      ["-lc", `objdump -p '${posix(join(root, name + exe))}'`],
+      { encoding: "utf8", env: { ...process.env, MSYSTEM: "MINGW64" } },
+    );
+    const dlls = [...imports.matchAll(/DLL Name:\s*(\S+)/g)].map((m) => m[1]);
+    const bundled = dlls.filter((dll) => /^(lib|zlib|mp3lame)/i.test(dll));
+    if (!dlls.length || bundled.length)
+      throw new Error(
+        `${name}.exe needs non-system DLLs: ${bundled.join(", ")}`,
+      );
+    continue;
+  }
   await chmod(join(root, name), 0o755);
   execFileSync("/usr/bin/codesign", [
     "--force",
@@ -144,6 +196,20 @@ for (const name of ["ffmpeg", "ffprobe"]) {
 }
 await copyFile(join(ffmpeg, "COPYING.LGPLv2.1"), join(root, "ffmpeg.LICENSE"));
 await copyFile(join(lame, "COPYING"), join(root, "lame.LICENSE"));
+if (windows) {
+  // Static linking can include MinGW-w64's winpthreads, whose license requires its notice.
+  const runtime = execFileSync(
+    bash,
+    [
+      "-lc",
+      "cat $(find /mingw64/share/licenses -ipath '*pthread*' -iname 'COPYING*' | head -1)",
+    ],
+    { encoding: "utf8", env: { ...process.env, MSYSTEM: "MINGW64" } },
+  );
+  if (!runtime.trim())
+    throw new Error("MinGW-w64 winpthreads license not found");
+  await writeFile(join(root, "mingw-w64-runtime.LICENSE"), runtime);
+}
 await copyFile(
   new URL("./build-ffmpeg.mjs", import.meta.url),
   join(root, "build-ffmpeg.mjs"),
@@ -153,6 +219,7 @@ await writeFile(
   JSON.stringify(
     {
       version: "8.0.1",
+      platform: `${process.platform}-${process.arch}`,
       recipeSHA256: createHash("sha256")
         .update(await readFile(new URL("./build-ffmpeg.mjs", import.meta.url)))
         .digest("hex"),
@@ -168,6 +235,6 @@ await writeFile(
 );
 await writeFile(
   join(root, "ffmpeg.README"),
-  "TuneVault controlled FFmpeg 8.0.1 build with LAME 3.100. LGPL licenses, unmodified complete source archives, configuration and build recipe are included beside these executables. No nonfree or GPL FFmpeg components are enabled. This distribution includes work by the Independent JPEG Group, used without changes.\n",
+  `TuneVault controlled FFmpeg 8.0.1 build with LAME 3.100. LGPL licenses, unmodified complete source archives, configuration and build recipe are included beside these executables. No nonfree or GPL FFmpeg components are enabled. This distribution includes work by the Independent JPEG Group, used without changes.${windows ? " Windows executables statically include the MinGW-w64 runtime; its license is in mingw-w64-runtime.LICENSE." : ""}\n`,
 );
 console.log("Controlled LGPL FFmpeg/ffprobe build complete");

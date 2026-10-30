@@ -20,7 +20,7 @@ Consult the exact bundled manifests, license texts and sources before redistribu
 | LAME                                | LGPL; controlled FFmpeg source build includes exact sources and build recipe                                                                            |
 
 Tool manifests record exact versions, artifact URLs, hashes and build/license
-information. The macOS controlled FFmpeg build includes unmodified FFmpeg and
+information. The controlled FFmpeg build on macOS and Windows includes unmodified FFmpeg and
 LAME source tarballs, license texts and reproducible build recipe in the tools
 resources. Other platform source distributions and configurations must pass the
 same release gates. See tools resources for yt-dlp's matching source and
