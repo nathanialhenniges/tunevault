@@ -1,3 +1,8 @@
-# TuneVault logo provenance
+# TuneVault logo
 
-Original generated concept created 2026-10-28 with the built-in imagegen tool for Nathanial Henniges. Copied without modification from the supplied TuneVault research assets. Original PNG provenance is retained. This is a generated concept, not trademark clearance. Demo cover provenance and exact generation prompts are in `../demo-covers/manifest.json`. These fictional images are design fixtures; no audio is included.
+This is the official TuneVault logo and app icon artwork, copyright 2026
+Nathanial Henniges. The Icon Composer project in `build/TuneVault.icon` and the
+platform icon exports are made from it.
+
+The fictional demo album covers and their generation records are in
+`../demo-covers/manifest.json`. They are design fixtures; no audio is included.

@@ -12,7 +12,7 @@ const root = resolve("build/TuneVault.icon");
 assert.deepEqual(
   await readFile(join(root, "Assets/wolf-concept.png")),
   await readFile("resources/icon.png"),
-  "Original generated PNG provenance must remain intact",
+  "The original logo PNG must remain unchanged inside the icon",
 );
 const temporary = await mkdtemp(join(tmpdir(), "tunevault-icon-"));
 try {

@@ -136,7 +136,7 @@ docs/          Architecture, backup, legal and release guidance
 
 Original app code: [MIT](LICENSE), copyright 2026 Nathanial Henniges.
 [Third-party components](THIRD_PARTY_NOTICES.md) retain their own licenses.
-The generated logo and demo covers retain honest provenance.
+The fictional demo album covers are AI-generated and contain no audio.
 
 ## Contact
 

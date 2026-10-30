@@ -27,11 +27,10 @@ same release gates. See tools resources for yt-dlp's matching source and
 third-party notices. Upstream links alone are not a substitute for a complete
 corresponding-source obligation where one applies.
 
-The original logo and six fictional album covers are supplied AI-generated
-design assets, not acquired music. Original PNG bytes and generation records
-are retained in the source fixture assets and Icon Composer project. Icon
-Composer-generated raster exports are derivatives of that concept. Demo assets
-contain no audio and are never inserted into a real user's library.
+The TuneVault logo and app icon are original TuneVault branding, copyright
+Nathanial Henniges. The six fictional demo album covers are AI-generated
+design assets, not acquired music. Demo assets contain no audio and are never
+inserted into a real user's library.
 
 No public release has been approved by this document. Before distribution,
 audit the exact packaged binaries and their dependency/source arrangements,
