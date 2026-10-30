@@ -584,11 +584,32 @@ export default function Settings({
             </section>
             <section>
               <h2>Runtime & bundled tools</h2>
-              <pre className="diagnostics">
-                {toolDiagnostics || info
-                  ? JSON.stringify(toolDiagnostics || info, null, 2)
-                  : "App information unavailable."}
-              </pre>
+              {info ? (
+                <dl className="property-list">
+                  <dt>Version</dt>
+                  <dd>{info.version}</dd>
+                  <dt>Platform</dt>
+                  <dd>
+                    {info.platform === "darwin"
+                      ? "macOS"
+                      : info.platform === "win32"
+                        ? "Windows"
+                        : info.platform}{" "}
+                    · {info.arch}
+                  </dd>
+                  <dt>Node.js</dt>
+                  <dd>{info.runtime?.node || "Unknown"}</dd>
+                  <dt>Liquid Glass</dt>
+                  <dd>{info.nativeGlass ? "On" : "Off"}</dd>
+                </dl>
+              ) : (
+                <p className="muted">App information unavailable.</p>
+              )}
+              {toolDiagnostics && (
+                <pre className="diagnostics" tabIndex={0}>
+                  {JSON.stringify(toolDiagnostics, null, 2)}
+                </pre>
+              )}
               <div className="button-row">
                 <button
                   onClick={async () => {
