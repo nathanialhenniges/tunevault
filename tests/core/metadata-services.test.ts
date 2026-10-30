@@ -41,22 +41,23 @@ it("merges legacy service defaults and validates partial setting updates", async
     metadataServices: {
       musicbrainz: true,
       coverArtArchive: true,
-      acoustid: false,
     },
   });
   seed("settings", {
     id: 1,
     appearance: "dark",
-    metadataServices: { musicbrainz: false },
+    metadataServices: { musicbrainz: false, acoustid: true },
   });
   const reopened = restart();
+  expect(
+    (await reopened.snapshot()).settings.metadataServices,
+  ).not.toHaveProperty("acoustid");
   expect((await reopened.snapshot()).settings).toMatchObject({
     appearance: "dark",
     metadataOnline: true,
     metadataServices: {
       musicbrainz: false,
       coverArtArchive: true,
-      acoustid: false,
     },
   });
   await reopened.dispatch("settings.update", {
@@ -69,9 +70,11 @@ it("merges legacy service defaults and validates partial setting updates", async
     metadataServices: {
       musicbrainz: false,
       coverArtArchive: true,
-      acoustid: true,
     },
   });
+  expect(
+    (await persisted.snapshot()).settings.metadataServices,
+  ).not.toHaveProperty("acoustid");
   for (const data of [
     { metadataOnline: "false" },
     { metadataServices: null },
@@ -81,7 +84,7 @@ it("merges legacy service defaults and validates partial setting updates", async
     await expect(persisted.dispatch("settings.update", data)).rejects.toThrow();
 });
 
-it("blocks disabled lookups before cache/network access and keeps AcoustID honest", async () => {
+it("blocks disabled lookups before cache/network access and rejects removed identification", async () => {
   const { service, seed } = await fixture();
   const track = { id: "track", metadata: { title: "Owned", artist: "Artist" } };
   seed("tracks", track);
@@ -111,13 +114,7 @@ it("blocks disabled lookups before cache/network access and keeps AcoustID hones
   );
   await expect(
     service.dispatch("lookup.identify", { id: track.id }),
-  ).rejects.toThrow("acoustid is disabled");
-  await service.dispatch("settings.update", {
-    metadataServices: { acoustid: true },
-  });
-  await expect(
-    service.dispatch("lookup.identify", { id: track.id }),
-  ).rejects.toThrow("unavailable");
+  ).rejects.toThrow("Unknown");
   expect(fetch).not.toHaveBeenCalled();
 });
 

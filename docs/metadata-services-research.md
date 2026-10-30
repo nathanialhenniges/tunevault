@@ -2,6 +2,15 @@
 
 Research only; nothing here is adopted. Lines marked **Opinion** are recommendations, not findings.
 
+## Owner decision: keyless services only
+
+AcoustID was dropped because it requires a shipped application API key. The
+owner does not want API keys or unavailable features in the app. Only MusicBrainz
+and Cover Art Archive remain as metadata/artwork providers. Earlier AcoustID
+recommendations and checklists below are historical research, not implementation
+instructions. No fingerprint tool, identification action or AcoustID setting is
+included in the product. Legacy stored preferences are ignored for compatibility.
+
 ## 1. Current state
 
 **Fetching.** All lookups start when the user acts. Inspector → Metadata suggestions → "Find suggestions" (`src/renderer/src/Inspector.tsx:378-412`) runs `lookup()` (`src/core/library.ts:2993-3036`). That function sends one MusicBrainz recording search for `title artist` with `limit=10`, then caches the results in SQLite for 7 days. "Preview release artwork…" fetches `coverartarchive.org/release/<mbid>/front-500` (`library.ts:1090-1095`) and caches the source for 24 hours. The user then reviews and applies (`library.ts:1138-1158`). `fetchBounded` (`src/core/network.ts`) allows only HTTPS to `musicbrainz.org`, `coverartarchive.org` and `*.archive.org` (redirects) (`:29-41`). It spaces requests 1.1 s apart (`:68`), honours 429/503 `Retry-After`, and sends `User-Agent: TuneVault/4.0.0 (https://github.com/nathanialhenniges/tunevault)` (`:3-4`). That version is hard-coded, so it will drift from `package.json`.

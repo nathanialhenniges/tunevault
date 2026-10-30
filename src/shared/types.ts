@@ -153,7 +153,6 @@ export interface Settings {
   metadataServices?: {
     musicbrainz: boolean;
     coverArtArchive: boolean;
-    acoustid: boolean;
   };
   disclaimerAccepted: boolean;
   disclaimerVersion: number;

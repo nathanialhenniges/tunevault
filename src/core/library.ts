@@ -296,10 +296,8 @@ export class LibraryService {
       filter: "all",
       ...saved,
       metadataServices: {
-        musicbrainz: true,
-        coverArtArchive: true,
-        acoustid: false,
-        ...saved.metadataServices,
+        musicbrainz: saved.metadataServices?.musicbrainz ?? true,
+        coverArtArchive: saved.metadataServices?.coverArtArchive ?? true,
       },
     };
   }
@@ -549,10 +547,11 @@ export class LibraryService {
             throw new Error("Invalid setting");
         if (data.selection) ids(data.selection);
         if (data.metadataServices !== undefined) {
-          const services = object(data.metadataServices);
+          const services = { ...object(data.metadataServices) };
+          delete services.acoustid; // Ignore legacy preferences from older settings files.
           for (const [key, value] of Object.entries(services))
             if (
-              !["musicbrainz", "coverArtArchive", "acoustid"].includes(key) ||
+              !["musicbrainz", "coverArtArchive"].includes(key) ||
               typeof value !== "boolean"
             )
               throw new Error("Invalid metadata service setting");
@@ -1104,11 +1103,6 @@ export class LibraryService {
         return { cancelled: true };
       case "lookup.search":
         return this.lookup(this.get<Track>("tracks", data.id));
-      case "lookup.identify":
-        this.requireMetadataService("acoustid");
-        throw new Error(
-          "AcoustID identification is unavailable: this build needs a registered application key and verified fingerprint tool",
-        );
       case "lookup.artworkPreview": {
         this.requireMetadataService("coverArtArchive");
         const signal = AbortSignal.any([
@@ -1272,9 +1266,7 @@ export class LibraryService {
         "Acknowledge authorized-use and third-party network access before online acquisition",
       );
   }
-  private requireMetadataService(
-    service: "musicbrainz" | "coverArtArchive" | "acoustid",
-  ) {
+  private requireMetadataService(service: "musicbrainz" | "coverArtArchive") {
     const settings = this.settings();
     if (!settings.metadataOnline)
       throw new Error(

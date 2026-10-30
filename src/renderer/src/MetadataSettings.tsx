@@ -16,7 +16,6 @@ export default function MetadataSettings({
   const services = {
     musicbrainz: true,
     coverArtArchive: true,
-    acoustid: false,
     ...settings.metadataServices,
   };
   async function save(changes: Partial<Settings>) {
@@ -92,25 +91,6 @@ export default function MetadataSettings({
       <p className="muted">
         Sends a release ID, your IP address and the TuneVault version to request
         artwork up to 1200 pixels. Images belong to their copyright owners.
-      </p>
-      <label className="check-line">
-        <input
-          type="checkbox"
-          checked={services.acoustid}
-          disabled={busy || !online}
-          onChange={(event) =>
-            void save({
-              metadataServices: { ...services, acoustid: event.target.checked },
-            })
-          }
-        />
-        Allow AcoustID identification when available
-      </label>
-      <p className="muted">
-        Off by default. Identification is unavailable in this build: a
-        registered application key and verified fingerprint tool are required.
-        No fingerprint or audio is sent. A future supported lookup would send a
-        fingerprint and duration, not the audio file.
       </p>
       {!settings.onlineAcknowledged && (
         <p className="muted">
