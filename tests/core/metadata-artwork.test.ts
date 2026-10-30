@@ -269,6 +269,20 @@ it("applies reviewed service fields with validated per-field provenance and pres
   expect(updated.metadata.title).toBe(suggestion.title);
   expect(updated.origins.title).toBe(`musicbrainz:${mbid}`);
   expect(updated.locks).toEqual([]);
+  await service.dispatch("tracks.edit", {
+    ids: [track.id],
+    changes: { title: "Another user title" },
+  });
+  await service.dispatch("tracks.edit", {
+    ids: [track.id],
+    changes: { title: suggestion.title },
+    locks: ["title"],
+    lookupSources: { title: suggestion.token },
+  });
+  updated = (await service.snapshot()).tracks[0];
+  expect(updated.metadata.title).toBe(suggestion.title);
+  expect(updated.origins.title).toBe(`musicbrainz:${mbid}`);
+  expect(updated.locks).toEqual(["title"]);
 }, 120000);
 
 it("falls back only for missing 1200px art and keeps the applied image within 1200px", async () => {
