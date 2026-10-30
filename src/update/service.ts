@@ -17,6 +17,20 @@ const redirectHosts = new Set([
   "objects.githubusercontent.com",
 ]);
 
+export class UpdateRequestError extends Error {
+  constructor(readonly status: number) {
+    super(`Update request failed (${status})`);
+    this.name = "UpdateRequestError";
+  }
+}
+
+const developmentPreview = {
+  status: "development-preview",
+  version: "99.0.0",
+  notes:
+    "Local development preview, not a real release. This illustrates update release notes without contacting GitHub. No update files can be downloaded or installed from this preview.",
+};
+
 async function updateResponse(
   url: string,
   max: number,
@@ -52,8 +66,10 @@ async function updateResponse(
       current = new URL(location, current);
       continue;
     }
-    if (!response.ok || !response.body)
-      throw new Error(`Update request failed (${response.status})`);
+    if (!response.ok || !response.body) {
+      await response.body?.cancel();
+      throw new UpdateRequestError(response.status);
+    }
     if (Number(response.headers.get("content-length")) > max)
       throw new Error("Update response too large");
     return response;
@@ -110,17 +126,23 @@ export class UpdateService {
   private cancellation: AbortController | null = null;
   private updater: import("electron-updater").NsisUpdater | null = null;
   private checked = false;
+  private noRelease = false;
   constructor(
     private options: UpdateContext & {
       cacheDir: string;
       publicKeys: string[];
       jobsActive: () => boolean;
+      development?: boolean;
       transport?: typeof boundedFetch;
       windowsUpdater?: () => Promise<import("electron-updater").NsisUpdater>;
     },
   ) {}
 
   status() {
+    if (this.options.development)
+      return this.checked
+        ? { ...developmentPreview }
+        : { status: "development" };
     return {
       status: this.cancellation
         ? "downloading"
@@ -130,11 +152,13 @@ export class UpdateService {
             : "ready-to-install"
           : this.release
             ? "available"
-            : !this.options.publicKeys.length
-              ? "not-configured"
-              : this.checked
-                ? "current"
-                : "unchecked",
+            : this.noRelease
+              ? "no-release"
+              : !this.options.publicKeys.length
+                ? "not-configured"
+                : this.checked
+                  ? "current"
+                  : "unchecked",
       ...(this.release
         ? {
             version: this.release.envelope.version,
@@ -152,12 +176,29 @@ export class UpdateService {
       throw new Error(
         "Finish or cancel media jobs before checking for updates",
       );
+    if (this.options.development) {
+      this.checked = true;
+      return this.status();
+    }
     if (!this.options.publicKeys.length) return { status: "not-configured" };
     const transport = this.options.transport ?? boundedFetch;
-    const [bytes, signatureText] = await Promise.all([
-      transport(`${releaseRoot}release-envelope.json`, 128_000),
-      transport(`${releaseRoot}release-envelope.sig`, 256),
-    ]);
+    let bytes: Buffer;
+    try {
+      bytes = await transport(`${releaseRoot}release-envelope.json`, 128_000);
+    } catch (error) {
+      if (!(error instanceof UpdateRequestError) || error.status !== 404)
+        throw error;
+      this.release = null;
+      this.downloaded = null;
+      this.updater = null;
+      this.checked = true;
+      this.noRelease = true;
+      return this.status();
+    }
+    const signatureText = await transport(
+      `${releaseRoot}release-envelope.sig`,
+      256,
+    );
     const signature = signatureText.toString("ascii").trim();
     if (!/^[A-Za-z0-9+/]{86}==$/.test(signature))
       throw new Error("Invalid release signature encoding");
@@ -169,12 +210,17 @@ export class UpdateService {
       this.options,
     );
     this.checked = true;
+    this.noRelease = false;
     if (JSON.stringify(previous) !== JSON.stringify(this.release))
       this.downloaded = null;
     return this.status();
   }
 
   async download(): Promise<{ status: string; path: string; version: string }> {
+    if (this.options.development)
+      throw new Error(
+        "Development previews cannot download or install updates",
+      );
     if (this.cancellation)
       throw new Error("An update download is already active");
     if (!this.release)
@@ -263,12 +309,20 @@ export class UpdateService {
     this.cancellation?.abort();
   }
   async verifiedDownload(): Promise<string> {
+    if (this.options.development)
+      throw new Error(
+        "Development previews cannot download or install updates",
+      );
     if (!this.downloaded || !this.release)
       throw new Error("No verified installer");
     await verifyArtifact(this.downloaded, this.release.asset);
     return this.downloaded;
   }
   async install(): Promise<void> {
+    if (this.options.development)
+      throw new Error(
+        "Development previews cannot download or install updates",
+      );
     if (this.options.platform !== "win32")
       throw new Error("macOS updates require manual Quit, Replace, Reopen");
     if (this.options.jobsActive())

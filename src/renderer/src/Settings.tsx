@@ -347,17 +347,27 @@ export default function Settings({
             <label className="check-line">
               <input
                 type="checkbox"
-                checked={settings.autoUpdates}
+                checked={
+                  info?.packaged === false ? false : settings.autoUpdates
+                }
+                disabled={info?.packaged === false}
                 onChange={(e) =>
                   run("settings.update", { autoUpdates: e.target.checked })
                 }
               />
               Automatically check for app releases
             </label>
+            {info?.packaged === false && (
+              <p className="muted">
+                Development build: automatic checks are paused. Check for
+                updates opens a local preview with example release notes. Your
+                installed-app update preference is kept.
+              </p>
+            )}
             <p className="muted">
-              Checks contact GitHub with your IP and release request. Download
-              and installation require your choice. Updates pause during active
-              media jobs.
+              {info?.packaged === false
+                ? "Preview checks stay on this computer. Downloads and installation are available only for authenticated releases in installed builds."
+                : "Checks contact GitHub with your IP and release request. Download and installation require your choice. Updates pause during active media jobs."}
             </p>
             <div className="button-row">
               <button
@@ -436,6 +446,12 @@ export default function Settings({
                   {(
                     {
                       unchecked: "No release check this session.",
+                      development:
+                        "Development build. Check for updates to preview the update screen locally.",
+                      "development-preview":
+                        "Development preview. This is not a real release; no update will be installed.",
+                      "no-release":
+                        "No published update is available yet. You can check again later.",
                       downloading:
                         "Downloading the authenticated installer. It is not ready to install yet.",
                       "not-configured":

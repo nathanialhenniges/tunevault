@@ -42,6 +42,21 @@ Perform these steps on an owner-controlled machine. The commands below are setup
 
 The source fixtures under `tests/fixtures/update-test-*` are disposable public test credentials. They are not production trust anchors. Only the separate `TUNEVAULT_INSTALLER_TEST=1` build resolves the loopback test configuration; production builds use `src/update/config.ts` and the committed production public keys.
 
+## Development update checks
+
+Like WolfWave's bundled development appcast, an unpackaged TuneVault build
+keeps manual Check for updates usable with local example release notes.
+Automatic checks are paused without changing the saved installed-app preference.
+The preview is labeled as development, makes no update network requests and
+cannot download or install an update. No production or test signing key is
+needed for this non-installable preview. Installed builds keep authenticated
+production checks, including the separate installer-test build's test-only feed.
+
+Before a signed production feed has been published, a missing release envelope
+is shown as No published update is available yet. It does not mean the app was
+verified as current. A missing signature, invalid signature or other network
+failure remains an error; installer verification is never skipped.
+
 ## Candidate authentication and publication
 
 The native verification workflow builds production candidates once for Apple Silicon Macs on macOS 15+ and Windows 10+ x64 PCs, tests their packaged resources/UI, then exercises separate installed-upgrade fixtures. The evidence records the production candidate's filename, size and SHA-512. An unsuccessful or missing matrix leg blocks the release workflow. CI runner versions do not establish verification on the oldest supported OS.

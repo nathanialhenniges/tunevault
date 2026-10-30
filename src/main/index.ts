@@ -385,6 +385,7 @@ app
       osVersion:
         process.platform === "darwin" ? process.getSystemVersion() : release(),
       cacheDir: join(app.getPath("userData"), "updates"),
+      development: !app.isPackaged,
       ...updateOptions(),
       jobsActive: () => jobsActive,
     });
@@ -1050,6 +1051,7 @@ app
           ["running", "queued"].includes(j.status),
         );
         if (
+          app.isPackaged &&
           state.settings.disclaimerAccepted &&
           state.settings.disclaimerVersion >= CURRENT_DISCLAIMER_VERSION &&
           state.settings.autoUpdates &&
