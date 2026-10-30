@@ -346,9 +346,8 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
         }),
       first.id,
     );
-    await page
-      .getByRole("button", { name: "Settings & About", exact: true })
-      .click();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await page.getByRole("tab", { name: "Library", exact: true }).click();
     await choose(app, backup.path, "chooseRestore");
     await page
       .getByRole("button", { name: "Restore validated backup…", exact: true })

@@ -5,7 +5,8 @@ import Inspector, { BatchEditor } from "./Inspector";
 import AddDialog from "./AddDialog";
 import Devices, { ExportDialog, TargetSetup } from "./Devices";
 import Playlists from "./Playlists";
-import Settings from "./Settings";
+import Settings, { type SettingsPane } from "./Settings";
+import About from "./About";
 import { demoTracks } from "./fixtures";
 import { Empty, Icon, message, Modal, OperationErrorContext } from "./ui";
 import blueLogo from "./assets/branding/tunevault-wolf-concept.png";
@@ -71,12 +72,14 @@ export default function App() {
     [playlistChoice, setPlaylistChoice] = useState(""),
     [loading, setLoading] = useState(true),
     [guide, setGuide] = useState(false),
+    [settingsPane, setSettingsPane] = useState<SettingsPane>("general"),
     [releaseStatus, setReleaseStatus] = useState<{
       status: string;
       version?: string;
     } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null),
-    initialized = useRef(false);
+    initialized = useRef(false),
+    runRef = useRef<(action: string, input?: unknown) => Promise<any>>(null);
   const refresh = useCallback(async () => {
     const value = await window.tunevault.invoke("snapshot");
     setSnapshot(value);
@@ -123,8 +126,17 @@ export default function App() {
   useEffect(
     () =>
       window.tunevault.onMenu?.((action) => {
-        if (action === "import") setModal("add");
-        if (action === "settings") setView("settings");
+        // Menu actions: "settings[:pane]", "about", "welcome", "legal:<document>".
+        const [kind, detail] = action.split(":");
+        if (kind === "import") setModal("add");
+        if (kind === "settings") {
+          if (detail) setSettingsPane(detail as SettingsPane);
+          setView("settings");
+        }
+        if (kind === "about") setView("about");
+        if (kind === "welcome") setGuide(true);
+        if (kind === "legal")
+          runRef.current?.("openLegal", { document: detail }).catch(() => {});
       }),
     [],
   );
@@ -153,6 +165,7 @@ export default function App() {
             privacy: "privacy-policy",
             "third-party": "third-party-notices",
             install: "install-update",
+            license: "license",
           };
           const result = await window.tunevault.invoke("legal.read", {
             name: names[kind] || kind,
@@ -164,6 +177,7 @@ export default function App() {
                 privacy: "Privacy policy",
                 "third-party": "Third-party notices",
                 install: "Install & update help",
+                license: "License",
               }[kind] || kind,
             text:
               typeof result === "string"
@@ -221,6 +235,7 @@ export default function App() {
     },
     [refresh],
   );
+  runRef.current = run;
   function chooseSelection(ids: string[]) {
     setSelected(ids);
     if (!demo) void run("settings.update", { selection: ids }).catch(() => {});
@@ -405,13 +420,13 @@ export default function App() {
               </span>
             </div>
             <button
-              aria-label="Settings & About"
+              aria-label="Settings"
               className={`nav-item ${view === "settings" ? "active" : ""}`}
               onClick={() => setView("settings")}
               aria-current={view === "settings" ? "page" : undefined}
             >
               <Icon name="settings" />
-              <span>Settings & About</span>
+              <span>Settings</span>
             </button>
           </div>
         </nav>
@@ -443,7 +458,12 @@ export default function App() {
                     : "Verified update ready"}
                   {releaseStatus.version ? ` · ${releaseStatus.version}` : ""}
                 </span>{" "}
-                <button onClick={() => setView("settings")}>
+                <button
+                  onClick={() => {
+                    setSettingsPane("updates");
+                    setView("settings");
+                  }}
+                >
                   Review update…
                 </button>
               </div>
@@ -766,6 +786,8 @@ export default function App() {
             <Settings
               settings={snapshot.settings}
               run={run}
+              pane={settingsPane}
+              onPane={setSettingsPane}
               onShowGuide={() => setGuide(true)}
               demo={demo}
               setDemo={(value) => {
@@ -776,6 +798,7 @@ export default function App() {
               }}
             />
           )}
+          {view === "about" && <About run={run} logo={logo} />}
         </main>
         {current && (
           <Inspector

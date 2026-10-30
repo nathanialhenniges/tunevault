@@ -165,6 +165,29 @@ async function picker(kind: string): Promise<any> {
   );
   return kind === "chooseImport" ? paths : (paths[0] ?? null);
 }
+// Suggests a folder under the user's Music folder. Main chooses the path, so it
+// is granted like a native dialog choice; it is only created when requested.
+async function defaultFolder(input: any) {
+  const kind = input?.kind;
+  if (kind !== "vault" && kind !== "export")
+    throw new Error("Unknown default folder");
+  let name = [...(typeof input?.name === "string" ? input.name : "")]
+    .map((c) => (c.charCodeAt(0) < 32 || '\\/:*?"<>|'.includes(c) ? " " : c))
+    .join("")
+    .replace(/\s+/g, " ")
+    .replace(/^[.\s]+|[.\s]+$/g, "")
+    .slice(0, 80);
+  if (!name || /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(name)) name = "Player";
+  const folder = join(
+    app.getPath("music"),
+    "TuneVault",
+    ...(kind === "vault" ? ["Library"] : ["Exports", name]),
+  );
+  if (!input?.create) return folder;
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(folder, { recursive: true });
+  return grants.grant(folder);
+}
 async function checkPaths(action: string, input: any) {
   if (["import.preview", "import.start"].includes(action)) {
     if (!Array.isArray(input?.paths) || input.paths.length > 10000)
@@ -273,10 +296,11 @@ app
     app.setAboutPanelOptions({
       applicationName: "TuneVault",
       applicationVersion: app.getVersion(),
-      version: app.getVersion(),
+      // An empty build version stops macOS from repeating the version in brackets.
+      version: "",
       copyright: "Copyright © 2026 Nathanial Henniges",
       credits:
-        "MIT License · Local music archive and portable-player exports. Third-party components retain their own licenses.",
+        "Local music library and portable-player exports.\nMIT License. Bundled tools keep their own licenses: see Help › Third-Party Notices.",
       website: "https://github.com/nathanialhenniges/tunevault",
       iconPath: app.isPackaged
         ? join(process.resourcesPath, "icon.png")
@@ -406,6 +430,7 @@ app
           ].includes(action)
         )
           return picker(action);
+        if (action === "defaultFolder") return defaultFolder(raw);
         const input = raw as any;
         if (action === "diagnostics.preview") {
           const state = await command("snapshot");
@@ -650,14 +675,15 @@ app
               "privacy-policy",
               "third-party-notices",
               "install-update",
+              "license",
             ].includes(name)
           )
             throw new Error("Unknown document");
           const { readFile } = await import("node:fs/promises");
+          const file =
+            name === "license" ? "LICENSE" : join("docs", `${name}.md`);
           return readFile(
-            app.isPackaged
-              ? join(process.resourcesPath, "docs", `${name}.md`)
-              : resolve("docs", `${name}.md`),
+            app.isPackaged ? join(process.resourcesPath, file) : resolve(file),
             "utf8",
           );
         }
@@ -692,24 +718,34 @@ app
         return result;
       },
     );
+    const mac = process.platform === "darwin";
+    const send = (action: string) => () =>
+      window?.webContents.send("tunevault:menu", action);
+    const settingsItem = {
+      label: mac ? "Settings…" : "Settings",
+      accelerator: "CmdOrCtrl+,",
+      click: send("settings"),
+    };
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
-        ...(process.platform === "darwin"
+        ...(mac
           ? [
               {
                 label: "TuneVault",
                 submenu: [
                   { role: "about" as const },
+                  { type: "separator" as const },
+                  settingsItem,
                   {
-                    label: "Settings…",
-                    accelerator: "CmdOrCtrl+,",
-                    click: () =>
-                      window?.webContents.send("tunevault:menu", "settings"),
+                    label: "Check for Updates…",
+                    click: send("settings:updates"),
                   },
                   { type: "separator" as const },
                   { role: "services" as const },
+                  { type: "separator" as const },
                   { role: "hide" as const },
                   { role: "hideOthers" as const },
+                  { role: "unhide" as const },
                   { type: "separator" as const },
                   { role: "quit" as const },
                 ],
@@ -720,27 +756,78 @@ app
           label: "File",
           submenu: [
             {
-              label: "Add files…",
+              label: "Add Music…",
               accelerator: "CmdOrCtrl+O",
-              click: () => window?.webContents.send("tunevault:menu", "import"),
+              click: send("import"),
             },
-            { role: "close" },
+            { type: "separator" },
+            { label: "Back Up Library…", click: send("settings:library") },
+            {
+              label: "Restore from Backup…",
+              click: send("settings:library"),
+            },
+            { type: "separator" },
+            ...(mac
+              ? [{ role: "close" as const }]
+              : [
+                  settingsItem,
+                  { type: "separator" as const },
+                  { role: "quit" as const, label: "Exit" },
+                ]),
           ],
         },
         { role: "editMenu" },
-        { role: "viewMenu" },
+        {
+          label: "View",
+          submenu: [
+            // Reload and developer tools are for development builds only.
+            ...(app.isPackaged
+              ? []
+              : [
+                  { role: "reload" as const },
+                  { role: "toggleDevTools" as const },
+                  { type: "separator" as const },
+                ]),
+            { role: "resetZoom" },
+            { role: "zoomIn" },
+            { role: "zoomOut" },
+            { type: "separator" },
+            { role: "togglefullscreen" },
+          ],
+        },
         { role: "windowMenu" },
         {
-          label: "Help",
+          role: "help",
           submenu: [
-            { label: "About TuneVault", click: () => app.showAboutPanel() },
+            { label: "Welcome Guide…", click: send("welcome") },
+            { label: "Install & Update Help", click: send("legal:install") },
+            { type: "separator" },
+            { label: "Privacy Policy", click: send("legal:privacy") },
+            { label: "Terms of Use", click: send("legal:terms") },
+            { label: "Third-Party Notices", click: send("legal:third-party") },
+            { label: "License", click: send("legal:license") },
+            { type: "separator" },
             {
-              label: "Report an issue",
+              label: "Create Support Report…",
+              click: send("settings:advanced"),
+            },
+            {
+              label: "Report an Issue…",
               click: () =>
                 shell.openExternal(
                   "https://github.com/nathanialhenniges/tunevault/issues",
                 ),
             },
+            ...(mac
+              ? []
+              : [
+                  { type: "separator" as const },
+                  {
+                    label: "Check for Updates…",
+                    click: send("settings:updates"),
+                  },
+                  { label: "About TuneVault", click: send("about") },
+                ]),
           ],
         },
       ]),
@@ -766,7 +853,11 @@ app
         jobsActive = state.jobs.some((j: any) =>
           ["running", "queued"].includes(j.status),
         );
-        if (state.settings.autoUpdates && !jobsActive) {
+        if (
+          state.settings.disclaimerAccepted &&
+          state.settings.autoUpdates &&
+          !jobsActive
+        ) {
           await updates.check();
           window?.webContents.send("tunevault:changed");
         }

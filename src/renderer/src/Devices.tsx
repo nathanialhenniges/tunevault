@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   ExportPlan,
   Format,
@@ -932,7 +932,24 @@ export function TargetSetup({
     [destination, setDestination] = useState(""),
     [budget, setBudget] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [suggested, setSuggested] = useState("");
+  // USB targets must be the player's mounted folder; others get a suggested
+  // folder under Music/TuneVault/Exports that is created on Add target.
+  const usb = transport === "usb";
+  const folderName =
+    name.trim() || (transport === "imazing" ? "iPod" : "Player");
+  useEffect(() => {
+    if (usb) return setSuggested("");
+    let current = true;
+    window.tunevault
+      .invoke("defaultFolder", { kind: "export", name: folderName })
+      .then((path: string) => current && setSuggested(path))
+      .catch(() => current && setSuggested(""));
+    return () => {
+      current = false;
+    };
+  }, [usb, folderName]);
   return (
     <Modal
       title="Add export target"
@@ -940,7 +957,7 @@ export function TargetSetup({
       actions={
         <button
           className="primary"
-          disabled={!name.trim() || !destination || busy}
+          disabled={!name.trim() || (!destination && !suggested) || busy}
           onClick={async () => {
             setError("");
             setBusy(true);
@@ -953,7 +970,13 @@ export function TargetSetup({
               await run("targets.create", {
                 name: name.trim(),
                 transport,
-                destination,
+                destination:
+                  destination ||
+                  (await run("defaultFolder", {
+                    kind: "export",
+                    name: folderName,
+                    create: true,
+                  })),
                 budget: budget ? Math.floor(Number(budget) * 1e6) : null,
                 profile: { format },
               });
@@ -1006,9 +1029,11 @@ export function TargetSetup({
         Destination folder
         <div className="path-picker">
           <input
-            value={destination}
+            value={destination || suggested}
             readOnly
-            placeholder="No folder selected"
+            placeholder={
+              usb ? "Choose the player's mounted folder" : "No folder selected"
+            }
           />
           <button
             onClick={async () => {
@@ -1020,6 +1045,11 @@ export function TargetSetup({
           </button>
         </div>
       </label>
+      {!destination && suggested && (
+        <p className="small muted">
+          Suggested folder. TuneVault creates it when you add this target.
+        </p>
+      )}
       <details>
         <summary>Profile and storage budget</summary>
         <label className="field">

@@ -73,6 +73,13 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
     ),
     arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
     check: <path d="m5 12 4 4L19 6" />,
+    shield: <path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6Z" />,
+    refresh: (
+      <path d="M20 11a8 8 0 0 0-14.6-4.5M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5M20 20v-4h-4" />
+    ),
+    sliders: (
+      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4" />
+    ),
     warning: (
       <>
         <path d="m12 3 10 18H2Z" />

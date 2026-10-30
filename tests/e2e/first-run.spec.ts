@@ -40,9 +40,7 @@ test("first run requires the disclaimer, then offers a skippable welcome guide o
       const next = await again.app.firstWindow();
       await expect(next.getByRole("navigation")).toBeVisible();
       await expect(next.getByRole("dialog")).toHaveCount(0);
-      await next
-        .getByRole("button", { name: "Settings & About", exact: true })
-        .click();
+      await next.getByRole("button", { name: "Settings", exact: true }).click();
       await next.getByRole("button", { name: "Show welcome guide" }).click();
       await expect(
         next.getByRole("dialog", { name: "Welcome to TuneVault" }),

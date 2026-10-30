@@ -462,9 +462,17 @@ kbd {
 .segmented button:first-child {
   border-radius: 4px 0 0 4px;
 }
+.segmented button + button {
+  margin-left: -1px;
+}
 .segmented button:last-child {
   border-radius: 0 4px 4px 0;
-  margin-left: -1px;
+}
+/* Overlapping borders: keep the selected and focused segment's edge on top. */
+.segmented button.selected,
+.segmented button:focus-visible {
+  position: relative;
+  z-index: 1;
 }
 .target-select {
   display: flex;
@@ -1873,4 +1881,42 @@ button.link:hover:not(:disabled) {
   .splash-progress span {
     animation: none;
   }
+}
+
+/* Settings section tabs: icon over label, like a native settings toolbar */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 740px;
+  margin: 0 0 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tabs button {
+  flex-direction: column;
+  gap: 3px;
+  min-width: 74px;
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+.settings-tabs button:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.settings-tabs button.selected {
+  background: var(--selected);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+.settings-sections > section:first-child {
+  border-top: 0;
+}
+.about-page .about-brand img {
+  width: 96px;
+  height: 96px;
 }
