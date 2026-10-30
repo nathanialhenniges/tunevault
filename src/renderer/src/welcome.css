@@ -1,0 +1,269 @@
+.welcome-window {
+  overflow: auto;
+  background: var(--panel);
+}
+.welcome-window-card {
+  width: min(100%, 580px);
+  margin: auto;
+  padding: 40px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.welcome-identity {
+  text-align: center;
+  margin-bottom: 24px;
+}
+.welcome-identity img {
+  object-fit: contain;
+  margin-bottom: 12px;
+}
+.welcome-identity h1 {
+  font-size: 28px;
+  margin: 8px 0 0;
+}
+.welcome-intro {
+  font-size: 17px;
+  line-height: 1.5;
+  text-align: center;
+  margin: 0 0 28px;
+}
+.welcome-assurances {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 32px;
+  display: grid;
+  gap: 18px;
+}
+.welcome-assurances li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.welcome-assurances svg {
+  flex: none;
+  color: var(--accent);
+}
+.welcome-consent {
+  display: grid;
+  gap: 12px;
+}
+.welcome-consent p {
+  margin: 0;
+}
+.welcome-legal {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.welcome-agreement {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 12px;
+}
+.welcome-agreement input {
+  flex: none;
+  margin-top: 3px;
+}
+.welcome-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--faint);
+}
+.welcome-window h1:focus,
+.setup-sheet h3:focus {
+  outline: none;
+}
+.setup-sheet {
+  width: min(640px, calc(100vw - 40px));
+  padding: 0;
+  color: var(--text);
+  background: var(--bg);
+}
+.setup-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--faint);
+}
+.setup-heading img {
+  object-fit: contain;
+  flex: none;
+}
+.setup-heading h2,
+.setup-heading p {
+  margin: 0;
+}
+.setup-heading h2 {
+  font-size: 21px;
+  margin-top: 2px;
+}
+.setup-heading .icon-button {
+  margin-left: auto;
+}
+.setup-progress {
+  list-style: none;
+  margin: 0;
+  padding: 16px 24px;
+  display: flex;
+  gap: 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--faint);
+}
+.setup-progress li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.setup-progress li > span {
+  width: 23px;
+  height: 23px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.setup-progress .current,
+.setup-progress .done {
+  color: var(--text);
+}
+.setup-progress .current > span,
+.setup-progress .done > span {
+  background: var(--selected);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.setup-content {
+  padding: 24px;
+  min-height: 300px;
+}
+.setup-content h3 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.setup-content > p {
+  margin: 0 0 18px;
+}
+.setup-content .field {
+  margin-top: 20px;
+}
+.setup-content .setup-footnote {
+  margin: 24px 0 0;
+}
+.setup-sheet .modal-actions {
+  padding: 16px 24px;
+  background: var(--panel);
+}
+.setup-drop-zone {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 24px 16px;
+  margin: 16px 0;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.setup-drop-zone > svg {
+  color: var(--muted);
+}
+.setup-drop-zone.dragging {
+  border-color: var(--accent);
+  background: var(--selected);
+}
+.setup-reference-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.context-tip {
+  position: fixed;
+  z-index: 20;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.context-tip::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: calc(50% - 6px);
+  width: 10px;
+  height: 10px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  transform: rotate(45deg);
+}
+.context-tip p {
+  margin: 0 0 12px;
+}
+.context-tip button {
+  float: right;
+}
+.context-tip::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+.library-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0 10px;
+}
+@media (max-width: 760px) {
+  .welcome-window-card {
+    padding: 24px;
+  }
+  .welcome-identity h1 {
+    font-size: 24px;
+  }
+  .setup-sheet {
+    width: calc(100vw - 24px);
+  }
+  .setup-progress {
+    gap: 14px;
+    padding: 14px 18px;
+  }
+  .setup-content {
+    padding: 20px 18px;
+    min-height: 260px;
+  }
+  .setup-heading {
+    padding: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-window *,
+  .setup-sheet *,
+  .context-tip {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .welcome-window,
+  .setup-sheet,
+  .context-tip {
+    background: var(--bg);
+  }
+}

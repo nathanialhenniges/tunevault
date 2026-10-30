@@ -1,8 +1,20 @@
-import { useEffect, useId, useRef, useState } from "react";
-import type { Settings } from "../../shared/types";
-import { Icon } from "./ui";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { CURRENT_DISCLAIMER_VERSION, type Settings } from "../../shared/types";
+import { bytes, Icon, message, OperationErrorContext } from "./ui";
+import "./welcome.css";
 
 type Run = (action: string, input?: unknown) => Promise<any>;
+export type AddInput =
+  | { kind: "files"; paths: string[] }
+  | { kind: "references"; text: string; format: string; name: string };
 
 export function Splash({ logo, status }: { logo: string; status: string }) {
   return (
@@ -20,218 +32,561 @@ export function Splash({ logo, status }: { logo: string; status: string }) {
 }
 
 export function Disclaimer({ logo, run }: { logo: string; run: Run }) {
+  const [pane, setPane] = useState<"welcome" | "consent">("welcome");
   const [agreed, setAgreed] = useState(false),
     [busy, setBusy] = useState(false);
+  const error = useContext(OperationErrorContext);
+  const heading = useRef<HTMLHeadingElement>(null),
+    container = useRef<HTMLElement>(null);
   const headingId = useId();
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => heading.current?.focus(), []);
+  useEffect(() => heading.current?.focus(), [pane]);
   return (
-    <main className="first-run" aria-labelledby={headingId}>
-      <section className="first-run-card">
-        <img className="first-run-logo" src={logo} alt="" />
-        <h1 id={headingId} ref={heading} tabIndex={-1}>
-          Before you start
-        </h1>
-        <p>
-          TuneVault is a personal and educational project by Nathanial Henniges.
-          It is free, open source and provided as is, without support or
-          warranty.
+    <main
+      className="first-run welcome-window"
+      aria-labelledby={headingId}
+      ref={container}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        if (event.key !== "Tab") return;
+        const controls = [
+          ...container.current!.querySelectorAll<HTMLElement>(
+            "button:not(:disabled),input:not(:disabled),a[href]",
+          ),
+        ];
+        const first = controls[0],
+          last = controls.at(-1);
+        if (
+          event.shiftKey &&
+          (document.activeElement === first ||
+            document.activeElement === heading.current)
+        ) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }}
+    >
+      <section className="welcome-window-card">
+        <header className="welcome-identity">
+          <img src={logo} alt="" width="96" height="96" />
+          <p className="small muted">Your music. Your library.</p>
+          <h1 id={headingId} ref={heading} tabIndex={-1}>
+            {pane === "welcome"
+              ? "Welcome to TuneVault"
+              : "Use it for music you own"}
+          </h1>
+        </header>
+        <p className="sr-only" role="status">
+          {pane === "welcome"
+            ? "Step 1 of 2: Welcome"
+            : "Step 2 of 2: Authorized use"}
         </p>
-        <ul className="first-run-points">
-          <li>
-            Only use it for music you own or are licensed to keep. Downloading
-            content you have no right to copy may break a service's terms and
-            the copyright law where you live.
-          </li>
-          <li>
-            Personal or educational use is not a legal exception. You are
-            responsible for what you download, copy and transfer.
-          </li>
-          <li>
-            TuneVault is not affiliated with, endorsed by or connected to Apple,
-            Spotify, YouTube, Google, SoundCloud or iMazing.
-          </li>
-          <li>
-            Your library stays on this computer. TuneVault has no account and
-            sends no analytics.
-          </li>
-        </ul>
-        <p className="small">
-          Read the{" "}
-          <button
-            className="link"
-            onClick={() => run("openLegal", { document: "terms" })}
-          >
-            Terms of use
-          </button>{" "}
-          and{" "}
-          <button
-            className="link"
-            onClick={() => run("openLegal", { document: "privacy" })}
-          >
-            Privacy policy
-          </button>
-          .
-        </p>
-        <label className="first-run-agree">
-          <input
-            type="checkbox"
-            checked={agreed}
-            onChange={(e) => setAgreed(e.target.checked)}
-          />
-          I understand and will only use TuneVault for music I have the right to
-          keep.
-        </label>
-        <div className="first-run-actions">
+        {pane === "welcome" ? (
+          <>
+            <p className="welcome-intro">
+              Keep your own music organized, tagged and ready for your iPod or
+              MP3 player.
+            </p>
+            <ul className="welcome-assurances">
+              <li>
+                <Icon name="shield" />
+                <span>Stays on this computer. No account, no analytics.</span>
+              </li>
+              <li>
+                <Icon name="folder" />
+                <span>Your original files are never changed.</span>
+              </li>
+              <li>
+                <Icon name="refresh" />
+                <span>Review your edits. Undo them when you need to.</span>
+              </li>
+            </ul>
+          </>
+        ) : (
+          <div className="welcome-consent">
+            <p>
+              Only add music you own or are licensed to keep. You are
+              responsible for what you copy and transfer. Personal or
+              educational use is not a legal exception.
+            </p>
+            <p>
+              TuneVault is a free, open-source personal project by Nathanial
+              Henniges, provided as is without warranty.
+            </p>
+            <p className="small muted">
+              Not affiliated with Apple, Spotify, YouTube, Google, SoundCloud or
+              iMazing.
+            </p>
+            <p className="welcome-legal">
+              <button
+                className="link"
+                onClick={() => run("openLegal", { document: "terms" })}
+              >
+                Terms of use
+              </button>
+              <span aria-hidden="true">·</span>
+              <button
+                className="link"
+                onClick={() => run("openLegal", { document: "privacy" })}
+              >
+                Privacy policy
+              </button>
+            </p>
+            <label className="welcome-agreement">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(event) => setAgreed(event.target.checked)}
+              />
+              <span>
+                I understand and will only use TuneVault for music I have the
+                right to keep.
+              </span>
+            </label>
+          </div>
+        )}
+        {error && (
+          <p className="inline-error" role="alert">
+            {error}
+          </p>
+        )}
+        <footer className="welcome-actions">
           <button onClick={() => window.close()}>Quit</button>
-          <button
-            className="primary"
-            disabled={!agreed || busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await run("settings.update", { disclaimerAccepted: true });
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Agree and continue
-          </button>
-        </div>
+          <span className="spacer" />
+          {pane === "consent" && (
+            <button disabled={busy} onClick={() => setPane("welcome")}>
+              Back
+            </button>
+          )}
+          {pane === "welcome" ? (
+            <button className="primary" onClick={() => setPane("consent")}>
+              Continue
+            </button>
+          ) : (
+            <button
+              className="primary"
+              disabled={!agreed || busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await run("settings.update", {
+                    disclaimerAccepted: true,
+                    disclaimerVersion: CURRENT_DISCLAIMER_VERSION,
+                  });
+                } catch {
+                  /* Keep the saved-operation error beside the action. */
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? "Saving…" : "Agree and continue"}
+            </button>
+          )}
+        </footer>
       </section>
     </main>
   );
 }
 
-const steps = [
-  {
-    icon: "library",
-    title: "Welcome to TuneVault",
-    body: "Your music library, kept on your own computer. Organize and tag your music, build playlists, then send them to an iPod, an MP3 player or any folder.",
-  },
-  {
-    icon: "folder",
-    title: "Choose your vault",
-    body: "The vault is the folder where TuneVault keeps a safe copy of every track. Pick a folder with plenty of free space. You can move it later in Settings.",
-  },
-  {
-    icon: "plus",
-    title: "Add music",
-    body: "Drag files or folders onto the window, or use Add music… to import files, folders or a link to music you have the right to keep. TuneVault reads tags and artwork as it goes.",
-  },
-  {
-    icon: "playlist",
-    title: "Build playlists",
-    body: "Create playlists, drag to reorder them and fix tags in the details panel. Every edit can be reviewed before saving and undone afterwards.",
-  },
-  {
-    icon: "device",
-    title: "Send to your devices",
-    body: "In Devices & exports, add each player once. Prepare export shows exactly what will be copied, converted or skipped before anything is written.",
-  },
-  {
-    icon: "check",
-    title: "You're all set",
-    body: "Back up your library from Settings & About. You can reopen this guide there at any time.",
-  },
-];
-
 export function Onboarding({
   settings,
+  logo,
   run,
   onFinish,
-  onAddMusic,
+  onAdd,
+  pendingPaths = [],
 }: {
   settings: Settings;
+  logo: string;
   run: Run;
   onFinish: () => void;
-  onAddMusic: () => void;
+  onAdd: (input: AddInput) => void;
+  pendingPaths?: string[];
 }) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const [suggested, setSuggested] = useState<{
+    path: string;
+    availableBytes: number | null;
+    exists: boolean;
+  } | null>(null);
+  const [vault, setVault] = useState<{
+    path: string;
+    available: boolean;
+    availableBytes: number | null;
+  } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null),
+    heading = useRef<HTMLHeadingElement>(null),
+    opener = useRef<HTMLElement | null>(null);
   const titleId = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const ready = !!vault?.available && vault.path === settings.vault;
+  useLayoutEffect(() => {
+    if (!dialog.current?.open) {
+      opener.current = document.activeElement as HTMLElement;
+      dialog.current?.showModal();
+    }
+    heading.current?.focus();
+  }, [step]);
+  useEffect(
+    () => () => {
+      dialog.current?.close();
+      if (opener.current?.isConnected) opener.current.focus();
+    },
+    [],
+  );
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    dialog.current?.showModal();
-    return () => opener?.focus();
-  }, []);
-  const current = steps[step];
-  const last = step === steps.length - 1;
+    let current = true;
+    void Promise.all([
+      run("defaultFolder", { kind: "vault", info: true }),
+      run("vault.status"),
+    ])
+      .then(([proposal, status]) => {
+        if (current) {
+          setSuggested(proposal);
+          setVault(status);
+        }
+      })
+      .catch((reason) => {
+        if (current) setError(message(reason));
+      });
+    return () => {
+      current = false;
+    };
+  }, [settings.vault, run]);
+  async function execute(operation: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await operation();
+    } catch (reason) {
+      setError(message(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function choose(useDefault: boolean) {
+    await execute(async () => {
+      const path = await run(
+        useDefault ? "defaultFolder" : "chooseVault",
+        useDefault ? { kind: "vault", create: true } : undefined,
+      );
+      if (!path) return;
+      await run("settings.update", { vault: path });
+      setVault(await run("vault.status"));
+    });
+  }
+  async function pick(folder = false) {
+    await execute(async () => {
+      const selected = await run(
+        folder ? "chooseImportFolder" : "chooseImport",
+      );
+      const paths = Array.isArray(selected)
+        ? selected
+        : selected
+          ? [selected]
+          : [];
+      if (paths.length) onAdd({ kind: "files", paths });
+    });
+  }
   return (
     <dialog
       ref={dialog}
-      className="modal onboarding"
+      className="modal setup-sheet"
       aria-labelledby={titleId}
-      onCancel={(e) => {
-        e.preventDefault();
-        onFinish();
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onFinish();
       }}
     >
-      <div className="onboarding-body">
-        <span className="onboarding-icon" aria-hidden="true">
-          <Icon name={current.icon} size={28} />
-        </span>
-        <p className="small muted">
-          Step {step + 1} of {steps.length}
+      <header className="setup-heading">
+        <img src={logo} alt="" width="42" height="42" />
+        <div>
+          <p className="small muted">Welcome guide</p>
+          <h2 id={titleId}>Set up your library</h2>
+        </div>
+        <button
+          className="icon-button"
+          aria-label="Close setup"
+          disabled={busy}
+          onClick={onFinish}
+        >
+          <Icon name="close" />
+        </button>
+      </header>
+      <ol className="setup-progress" aria-label="Library setup tasks">
+        <li
+          className={step === 0 ? "current" : "done"}
+          aria-current={step === 0 ? "step" : undefined}
+        >
+          <span>{ready ? <Icon name="check" size={15} /> : "1"}</span>Choose
+          your library folder
+        </li>
+        <li
+          className={step === 1 ? "current" : ""}
+          aria-current={step === 1 ? "step" : undefined}
+        >
+          <span>2</span>Add your music
+        </li>
+      </ol>
+      <div className="setup-content">
+        <p className="sr-only" role="status">
+          Step {step + 1} of 2:{" "}
+          {step === 0 ? "Choose your library folder" : "Add your music"}
         </p>
-        <h2 id={titleId}>{current.title}</h2>
-        <p>{current.body}</p>
-        {current.icon === "folder" && (
-          <div className="onboarding-vault">
-            <input
-              readOnly
-              aria-label="Vault folder"
-              value={settings.vault || "No vault chosen yet"}
-            />
-            <button
-              onClick={async () => {
-                const path = await run("chooseVault");
-                if (path) await run("settings.update", { vault: path });
+        <h3 ref={heading} tabIndex={-1}>
+          {step === 0 ? "Choose your library folder" : "Add your music"}
+        </h3>
+        {step === 0 ? (
+          <>
+            <p>
+              TuneVault keeps managed copies here. Your original files stay
+              where they are.
+            </p>
+            <label className="field">
+              Library folder
+              <input
+                readOnly
+                value={
+                  settings.vault ||
+                  suggested?.path ||
+                  "Finding your Music folder…"
+                }
+              />
+            </label>
+            <p className="small muted">
+              {ready
+                ? "Ready to use"
+                : settings.vault
+                  ? "Your saved library folder is unavailable. Choose its location to continue."
+                  : "Suggested folder · created only when you choose it"}
+              {(ready ? vault?.availableBytes : suggested?.availableBytes) !=
+              null
+                ? ` · ${bytes((ready ? vault!.availableBytes : suggested!.availableBytes)!)} free on this disk`
+                : ""}
+            </p>
+            <div className="button-row">
+              {!ready && (
+                <button
+                  className="primary"
+                  disabled={busy || !suggested}
+                  onClick={() => choose(true)}
+                >
+                  Use this folder
+                </button>
+              )}
+              <button disabled={busy} onClick={() => choose(false)}>
+                Choose another…
+              </button>
+            </div>
+            <p className="setup-footnote small muted">
+              You can move the library folder later in Settings. Keep enough
+              space for your music and saved revisions.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              Bring in owned or licensed files. You will review the selection
+              before copying.
+            </p>
+            <div
+              className={`setup-drop-zone ${dragging ? "dragging" : ""}`}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes("Files")) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDragging(true);
+                }
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setDragging(false);
+                if (!ready || busy) return;
+                const files = Array.from(event.dataTransfer.files);
+                void execute(async () => {
+                  const paths = await window.tunevault.droppedPaths(files);
+                  if (paths.length) onAdd({ kind: "files", paths });
+                });
               }}
             >
-              Choose…
+              <Icon name="music" size={30} />
+              <strong>Drop music files or folders here</strong>
+              <span className="small muted">
+                Or choose what to bring into your library folder.
+              </span>
+              <div className="button-row">
+                <button
+                  className="primary"
+                  disabled={!ready || busy}
+                  onClick={() => pick()}
+                >
+                  Choose files…
+                </button>
+                <button disabled={!ready || busy} onClick={() => pick(true)}>
+                  Choose folder…
+                </button>
+              </div>
+              {pendingPaths.length > 0 && (
+                <button
+                  disabled={!ready || busy}
+                  onClick={() => onAdd({ kind: "files", paths: pendingPaths })}
+                >
+                  Review {pendingPaths.length} dropped{" "}
+                  {pendingPaths.length === 1 ? "file" : "files"}
+                </button>
+              )}
+            </div>
+            <button
+              className="setup-reference-button"
+              disabled={!ready || busy}
+              onClick={() =>
+                execute(async () => {
+                  const path = await run("chooseReference");
+                  if (path) {
+                    const file = await run("references.readFile", { path });
+                    onAdd({
+                      kind: "references",
+                      text: file.text,
+                      format: file.format,
+                      name: file.name,
+                    });
+                  }
+                })
+              }
+            >
+              Import playlist file…
+              <Icon name="arrow" size={16} />
             </button>
-          </div>
+            <p className="small muted">
+              CSV/TSV, M3U, Spotify JSON or Apple Music XML. Playlist references
+              do not download audio.
+            </p>
+          </>
         )}
-        <div className="onboarding-dots" aria-hidden="true">
-          {steps.map((item, index) => (
-            <span key={item.title} className={index === step ? "on" : ""} />
-          ))}
-        </div>
+        {error && (
+          <p className="inline-error" role="alert">
+            {error}
+          </p>
+        )}
+        {busy && (
+          <p role="status" className="small muted">
+            Working…
+          </p>
+        )}
       </div>
       <footer className="modal-actions">
-        {!last && (
-          <button className="quiet" onClick={onFinish}>
-            Skip guide
+        <button className="quiet" disabled={busy} onClick={onFinish}>
+          Later
+        </button>
+        <span className="spacer" />
+        {step === 1 && (
+          <button disabled={busy} onClick={() => setStep(0)}>
+            Back
           </button>
         )}
-        <span className="spacer" />
-        {step > 0 && <button onClick={() => setStep(step - 1)}>Back</button>}
-        {last ? (
-          <>
-            <button
-              onClick={() => {
-                onFinish();
-                onAddMusic();
-              }}
-            >
-              Add music…
-            </button>
-            <button className="primary" onClick={onFinish}>
-              Get started
-            </button>
-          </>
+        {step === 0 ? (
+          <button
+            className="primary"
+            disabled={!ready || busy}
+            onClick={() => setStep(1)}
+          >
+            Next
+          </button>
         ) : (
           <button
             className="primary"
-            autoFocus
-            onClick={() => setStep(step + 1)}
+            disabled={!ready || busy}
+            onClick={onFinish}
           >
-            Next
+            Open library
           </button>
         )}
       </footer>
     </dialog>
+  );
+}
+
+export function ContextTip({
+  id,
+  anchor,
+  children,
+  onDismiss,
+}: {
+  id: string;
+  anchor: string;
+  children: string;
+  onDismiss: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  const [position, setPosition] = useState<CSSProperties>({
+    visibility: "hidden",
+  });
+  useLayoutEffect(() => {
+    const element = document.querySelector<HTMLElement>(anchor);
+    if (!element) return;
+    const previous = element.getAttribute("aria-describedby");
+    element.setAttribute(
+      "aria-describedby",
+      [previous, id].filter(Boolean).join(" "),
+    );
+    const layout = () => {
+      const rect = element.getBoundingClientRect();
+      const width = Math.min(300, innerWidth - 32);
+      const height = ref.current?.offsetHeight || 110;
+      setPosition({
+        left: Math.max(
+          16,
+          Math.min(
+            rect.left + rect.width / 2 - width / 2,
+            innerWidth - width - 16,
+          ),
+        ),
+        top: Math.max(
+          16,
+          Math.min(rect.bottom + 12, innerHeight - height - 16),
+        ),
+        width,
+      });
+    };
+    layout();
+    window.addEventListener("resize", layout);
+    window.addEventListener("scroll", layout, true);
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onDismiss();
+      }
+    };
+    document.addEventListener("keydown", escape, true);
+    return () => {
+      if (previous) element.setAttribute("aria-describedby", previous);
+      else element.removeAttribute("aria-describedby");
+      window.removeEventListener("resize", layout);
+      window.removeEventListener("scroll", layout, true);
+      document.removeEventListener("keydown", escape, true);
+    };
+  }, [anchor, id, onDismiss]);
+  return (
+    <aside
+      ref={ref}
+      id={id}
+      className="context-tip"
+      role="note"
+      style={position}
+    >
+      <p role="status">{children}</p>
+      <button onClick={onDismiss}>Got it</button>
+    </aside>
   );
 }

@@ -7,7 +7,9 @@ no audio. Store it privately; paths and source descriptions may be sensitive.
 
 Restore selects the bundle directory. Schema, IDs, references and included
 media hashes are checked before the current index is replaced. A recovery
-snapshot is saved before replacement. Keep your existing vault and backups
+bundle, including revision history, is saved before replacement. The UI asks
+for confirmation and reports the recovery folder and missing-file count.
+That recovery folder can itself be selected for Restore. Keep your existing vault and backups
 until you verify the restored library. Full backups need free space for copies;
 restoring missing original media from a metadata-only backup is impossible.
 
@@ -25,3 +27,7 @@ For metadata-only restore, existing media/art must stay inside the explicitly
 selected vault. Paths outside that root are treated as missing and require an
 explicit relink; a backup cannot grant read access to arbitrary local files.
 Artwork is bounded and validated before it is served to the renderer.
+
+Backup and restore exclude concurrent index writes and queued/running media
+work. New bundles omit duplicate library data and must satisfy the same size
+and record-count bounds as Restore before they are reported successful.

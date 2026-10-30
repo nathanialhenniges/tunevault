@@ -1,5 +1,6 @@
 import { LibraryService } from "../core/library";
 import { stopMediaTools } from "../core/media";
+import { CURRENT_DISCLAIMER_VERSION } from "../shared/types";
 const port = process.parentPort;
 if (!port) throw new Error("Library must run in a utility process");
 let service: LibraryService;
@@ -18,11 +19,24 @@ port.on("message", async ({ data }: { data: any }) => {
       port.postMessage({ id, result: true });
     } else if (action === "__cookies") {
       service.setCookieFile(input?.path ?? null);
-      service.resumeQueued();
+      const { settings } = await service.snapshot();
+      if (
+        settings.disclaimerAccepted &&
+        settings.disclaimerVersion >= CURRENT_DISCLAIMER_VERSION
+      )
+        service.resumeQueued();
       port.postMessage({ id, result: true });
     } else {
       if (!service) throw new Error("Library is not ready");
       const result = await service.dispatch(action, input);
+      if (action === "settings.update") {
+        const { settings } = await service.snapshot();
+        if (
+          settings.disclaimerAccepted &&
+          settings.disclaimerVersion >= CURRENT_DISCLAIMER_VERSION
+        )
+          service.resumeQueued();
+      }
       port.postMessage({ id, result });
       if (
         ![

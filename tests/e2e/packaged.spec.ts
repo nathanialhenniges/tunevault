@@ -116,7 +116,10 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
       { env: { ...process.env, PATH: "" } },
     );
     await choose(app, source, "chooseImport");
-    await page.getByRole("button", { name: "Add music…", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Add music…", exact: true })
+      .first()
+      .click();
     await page.getByRole("button", { name: "Choose audio files…" }).click();
     await expect(
       page.getByText("Synthetic 音楽", { exact: false }).first(),

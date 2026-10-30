@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Snapshot, Track } from "../../shared/types";
+import {
+  CURRENT_DISCLAIMER_VERSION,
+  type Snapshot,
+  type Track,
+} from "../../shared/types";
 import Library from "./Library";
 import Inspector, { BatchEditor } from "./Inspector";
 import AddDialog from "./AddDialog";
@@ -11,7 +15,13 @@ import { demoTracks } from "./fixtures";
 import { Empty, Icon, message, Modal, OperationErrorContext } from "./ui";
 import blueLogo from "./assets/branding/tunevault-wolf-concept.png";
 import orangeLogo from "./assets/branding/tunevault-wolf-orange.png";
-import { Disclaimer, Onboarding, Splash } from "./Welcome";
+import {
+  ContextTip,
+  Disclaimer,
+  Onboarding,
+  Splash,
+  type AddInput,
+} from "./Welcome";
 
 const empty: Snapshot = {
   tracks: [],
@@ -27,6 +37,8 @@ const empty: Snapshot = {
     autoUpdates: true,
     onlineAcknowledged: false,
     disclaimerAccepted: true,
+    disclaimerVersion: CURRENT_DISCLAIMER_VERSION,
+    tipsSeen: [],
     onboarded: true,
     selection: [],
     view: "tracks",
@@ -72,6 +84,10 @@ export default function App() {
     [playlistChoice, setPlaylistChoice] = useState(""),
     [loading, setLoading] = useState(true),
     [guide, setGuide] = useState(false),
+    [setupDismissed, setSetupDismissed] = useState(false),
+    [addInput, setAddInput] = useState<AddInput | null>(null),
+    [pendingPaths, setPendingPaths] = useState<string[]>([]),
+    [tip, setTip] = useState<"import" | "playlist" | "target" | null>(null),
     [settingsPane, setSettingsPane] = useState<SettingsPane>("general"),
     [releaseStatus, setReleaseStatus] = useState<{
       status: string;
@@ -79,7 +95,16 @@ export default function App() {
     } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null),
     initialized = useRef(false),
+    tipOffered = useRef(false),
     runRef = useRef<(action: string, input?: unknown) => Promise<any>>(null);
+  const consentAccepted =
+    snapshot.settings.disclaimerAccepted &&
+    snapshot.settings.disclaimerVersion >= CURRENT_DISCLAIMER_VERSION;
+  const setupOpen =
+    !demo &&
+    (guide ||
+      (!setupDismissed &&
+        (!snapshot.settings.onboarded || !snapshot.settings.vault)));
   const refresh = useCallback(async () => {
     const value = await window.tunevault.invoke("snapshot");
     setSnapshot(value);
@@ -128,7 +153,8 @@ export default function App() {
       window.tunevault.onMenu?.((action) => {
         // Menu actions: "settings[:pane]", "about", "welcome", "legal:<document>".
         const [kind, detail] = action.split(":");
-        if (kind === "import") setModal("add");
+        if ((loading || !consentAccepted) && kind !== "legal") return;
+        if (kind === "import") startAdd();
         if (kind === "settings") {
           if (detail) setSettingsPane(detail as SettingsPane);
           setView("settings");
@@ -138,7 +164,7 @@ export default function App() {
         if (kind === "legal")
           runRef.current?.("openLegal", { document: detail }).catch(() => {});
       }),
-    [],
+    [loading, consentAccepted, snapshot.settings.vault],
   );
   const [systemDark, setSystemDark] = useState(
     window.tunevault.bootAppearance?.systemDark ??
@@ -195,6 +221,9 @@ export default function App() {
             "credentials.status",
             "diagnostics.preview",
             "diagnostics.export",
+            "defaultFolder",
+            "vault.status",
+            "references.readFile",
             "updates.status",
             "updates.check",
             "updates.download",
@@ -250,6 +279,7 @@ export default function App() {
   }
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
+      if (loading || !consentAccepted) return;
       if (
         e.key === "Escape" &&
         !document.querySelector(
@@ -270,7 +300,7 @@ export default function App() {
         }
         if (e.key.toLowerCase() === "o") {
           e.preventDefault();
-          setModal("add");
+          startAdd();
         }
         if (
           e.key.toLowerCase() === "i" &&
@@ -285,7 +315,7 @@ export default function App() {
     };
     document.addEventListener("keydown", listener);
     return () => document.removeEventListener("keydown", listener);
-  }, [selected]);
+  }, [selected, loading, consentAccepted, snapshot.settings.vault]);
   const tracks = demo ? demoTracks : snapshot.tracks;
   const current = tracks.find((t) => t.id === inspected);
   const target =
@@ -293,6 +323,93 @@ export default function App() {
   const activeJobs = snapshot.jobs.filter(
     (j) => j.status === "queued" || j.status === "running",
   );
+  useEffect(() => {
+    if (
+      loading ||
+      !consentAccepted ||
+      setupOpen ||
+      modal ||
+      legal ||
+      inspected ||
+      demo ||
+      tipOffered.current ||
+      activeJobs.length
+    )
+      return;
+    const candidates = [
+      {
+        id: "import" as const,
+        active: view === "library" && snapshot.tracks.length > 0,
+        anchor: ".track-table thead input",
+      },
+      {
+        id: "playlist" as const,
+        active: view === "playlists" && snapshot.playlists.length > 0,
+        anchor: ".playlist-table thead th",
+      },
+      {
+        id: "target" as const,
+        active: view === "devices" && snapshot.targets.length > 0,
+        anchor: '[data-help-anchor="target"]',
+      },
+    ];
+    const next = candidates.find(
+      (candidate) =>
+        candidate.active &&
+        !snapshot.settings.tipsSeen.includes(candidate.id) &&
+        document.querySelector(candidate.anchor),
+    );
+    if (!next) return;
+    tipOffered.current = true;
+    setTip(next.id);
+    void run("settings.update", {
+      tipsSeen: [...snapshot.settings.tipsSeen, next.id],
+    }).catch(() => {});
+  }, [
+    loading,
+    consentAccepted,
+    setupOpen,
+    modal,
+    legal,
+    inspected,
+    demo,
+    view,
+    snapshot.tracks.length,
+    snapshot.playlists.length,
+    snapshot.targets.length,
+    snapshot.settings.tipsSeen,
+    activeJobs.length,
+    run,
+  ]);
+  function startAdd(input?: AddInput) {
+    if (!snapshot.settings.vault) {
+      if (input?.kind === "files") setPendingPaths(input.paths);
+      setSetupDismissed(false);
+      setGuide(true);
+      return;
+    }
+    setAddInput(input || null);
+    setModal("add");
+  }
+  function finishSetup() {
+    setGuide(false);
+    setSetupDismissed(true);
+    if (snapshot.settings.vault && !snapshot.settings.onboarded)
+      void run("settings.update", { onboarded: true }).catch(() => {});
+    requestAnimationFrame(() => {
+      if (
+        document.activeElement &&
+        document.activeElement !== document.body &&
+        document.activeElement.isConnected
+      )
+        return;
+      const heading = document.querySelector<HTMLElement>(".main-content h1");
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus();
+      }
+    });
+  }
   function prepare(playlistId?: string, targetContent = false) {
     if (demo) {
       setError(
@@ -312,14 +429,7 @@ export default function App() {
     );
     if (!paths.length) return;
     try {
-      if (!snapshot.settings.vault) {
-        setError(
-          "Choose your vault in Settings before importing dropped files.",
-        );
-        return;
-      }
-      await run("import.start", { paths });
-      setView("activity");
+      startAdd({ kind: "files", paths });
     } catch {
       setStatus("File import failed; see the library error");
     }
@@ -341,7 +451,7 @@ export default function App() {
     </Modal>
   );
   if (loading) return <Splash logo={logo} status={status} />;
-  if (!snapshot.settings.disclaimerAccepted)
+  if (!consentAccepted)
     return (
       <OperationErrorContext.Provider value={error}>
         <Disclaimer logo={logo} run={run} />
@@ -500,7 +610,7 @@ export default function App() {
                   </p>
                 </div>
                 <div className="button-row">
-                  <button disabled={demo} onClick={() => setModal("add")}>
+                  <button disabled={demo} onClick={() => startAdd()}>
                     <Icon name="plus" size={16} />
                     Add music…
                   </button>
@@ -617,6 +727,8 @@ export default function App() {
                   view={trackView}
                   sort={sort}
                   setSort={setSort}
+                  onAddMusic={() => startAdd()}
+                  hasVault={!!snapshot.settings.vault}
                   onFavorite={(t: Track) =>
                     guardedRun("tracks.favorite", {
                       ids: [t.id],
@@ -682,7 +794,7 @@ export default function App() {
                   <h1>Activity</h1>
                   <p>Durable jobs, recoverable failures and completed work.</p>
                 </div>
-                <button onClick={() => setModal("add")}>Add music…</button>
+                <button onClick={() => startAdd()}>Add music…</button>
               </div>
               {!snapshot.jobs.length ? (
                 <Empty icon="activity" title="No jobs yet">
@@ -826,7 +938,16 @@ export default function App() {
           <AddDialog
             settings={snapshot.settings}
             run={run}
-            onClose={() => setModal(null)}
+            initial={addInput}
+            onComplete={(kind) => {
+              finishSetup();
+              setPendingPaths([]);
+              setView(kind === "references" ? "playlists" : "activity");
+            }}
+            onClose={() => {
+              setModal(null);
+              setAddInput(null);
+            }}
           />
         )}
         {modal === "target" && (
@@ -895,18 +1016,42 @@ export default function App() {
           </Modal>
         )}
         {legalModal}
-        {(guide || !snapshot.settings.onboarded) && !demo && (
+        {setupOpen && (
           <Onboarding
             settings={snapshot.settings}
+            logo={logo}
             run={run}
-            onAddMusic={() => setModal("add")}
-            onFinish={() => {
-              setGuide(false);
-              if (!snapshot.settings.onboarded)
-                run("settings.update", { onboarded: true }).catch(() => {});
-            }}
+            pendingPaths={pendingPaths}
+            onAdd={startAdd}
+            onFinish={finishSetup}
           />
         )}
+        {tip &&
+          !setupOpen &&
+          !modal &&
+          !legal &&
+          !inspected &&
+          ((tip === "import" && view === "library") ||
+            (tip === "playlist" && view === "playlists") ||
+            (tip === "target" && view === "devices")) && (
+            <ContextTip
+              id={`tip-${tip}`}
+              anchor={
+                tip === "import"
+                  ? ".track-table thead input"
+                  : tip === "playlist"
+                    ? ".playlist-table thead th"
+                    : '[data-help-anchor="target"]'
+              }
+              onDismiss={() => setTip(null)}
+            >
+              {tip === "import"
+                ? "Select tracks to edit tags in Details."
+                : tip === "playlist"
+                  ? "Drag rows to reorder."
+                  : "Prepare export lists every copy and conversion first."}
+            </ContextTip>
+          )}
       </div>
     </OperationErrorContext.Provider>
   );

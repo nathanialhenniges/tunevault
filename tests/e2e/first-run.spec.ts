@@ -1,55 +1,92 @@
 import { test, expect } from "@playwright/test";
-import { launch, close } from "./launch";
 import { rm } from "node:fs/promises";
+import { launch, capture, close } from "./launch";
 
-test("first run requires the disclaimer, then offers a skippable welcome guide once", async () => {
-  const { app, dataDir, root } = await launch(undefined, { firstRun: true });
+test.skip(
+  !!process.env.TUNEVAULT_UPGRADE_PHASE,
+  "Separate installed-upgrade phase",
+);
+
+test("welcome and mandatory consent precede the app; setup cannot advance without a vault", async () => {
+  const { app, root } = await launch(undefined, { firstRun: true });
   try {
     const page = await app.firstWindow();
+    const welcome = page.getByRole("heading", {
+      name: "Welcome to TuneVault",
+      exact: true,
+    });
+    await expect(welcome).toBeVisible();
+    await expect(welcome).toBeFocused();
     await expect(
-      page.getByRole("heading", { name: "Before you start" }),
-    ).toBeVisible();
-    await expect(page.getByRole("navigation")).toHaveCount(0);
-    const agree = page.getByRole("button", { name: "Agree and continue" });
+      page.getByRole("navigation", { name: "Main navigation" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const consent = page.getByRole("heading", {
+      name: "Use it for music you own",
+      exact: true,
+    });
+    await expect(consent).toBeVisible();
+    await expect(consent).toBeFocused();
+    const agree = page.getByRole("button", {
+      name: "Agree and continue",
+      exact: true,
+    });
+    const checkbox = page.getByRole("checkbox", {
+      name: /I understand and will only use TuneVault/,
+    });
+    await expect(checkbox).not.toBeChecked();
     await expect(agree).toBeDisabled();
-    await page.getByRole("checkbox", { name: /right to keep/ }).check();
-    await agree.click();
-
-    const guide = page.getByRole("dialog", { name: "Welcome to TuneVault" });
-    await expect(guide).toBeVisible();
-    await guide.getByRole("button", { name: "Next" }).click();
+    await page.keyboard.press("Escape");
+    await expect(consent).toBeVisible();
     await expect(
-      page.getByRole("dialog", { name: "Choose your vault" }),
+      page.getByRole("navigation", { name: "Main navigation" }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Terms of use", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Terms of use", exact: true }),
+    ).toContainText("Nathanial Henniges");
+    await page.keyboard.press("Escape");
+    await expect(agree).toBeDisabled();
+    await capture(app, "artifacts/screenshots/onboarding-consent.png");
+    await checkbox.check();
+    await agree.click();
+    const setup = page.getByRole("dialog", {
+      name: "Set up your library",
+      exact: true,
+    });
+    await expect(setup).toBeVisible();
+    await expect(
+      setup.getByRole("button", { name: "Next", exact: true }),
+    ).toBeDisabled();
+    expect(
+      (await page.evaluate(() => window.tunevault.invoke("snapshot"))).settings,
+    ).toMatchObject({
+      disclaimerAccepted: true,
+      onboarded: false,
+      onlineAcknowledged: false,
+      vault: "",
+    });
+    await page.keyboard.press("Escape");
+    await expect(setup).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Library", exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Skip guide" }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("navigation")).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          window.tunevault
-            .invoke("snapshot")
-            .then((s) => [s.settings.disclaimerAccepted, s.settings.onboarded]),
-        ),
-      )
-      .toEqual([true, true]);
-    await close(app);
-
-    const again = await launch(dataDir, { firstRun: true });
-    try {
-      const next = await again.app.firstWindow();
-      await expect(next.getByRole("navigation")).toBeVisible();
-      await expect(next.getByRole("dialog")).toHaveCount(0);
-      await next.getByRole("button", { name: "Settings", exact: true }).click();
-      await next.getByRole("button", { name: "Show welcome guide" }).click();
-      await expect(
-        next.getByRole("dialog", { name: "Welcome to TuneVault" }),
-      ).toBeVisible();
-    } finally {
-      await close(again.app);
-      await rm(again.root, { recursive: true, force: true });
-    }
+    expect(
+      (await page.evaluate(() => window.tunevault.invoke("snapshot"))).settings
+        .onboarded,
+    ).toBe(false);
+    await page
+      .getByRole("button", { name: "Add music…", exact: true })
+      .last()
+      .click();
+    await expect(setup).toBeVisible();
+    await expect(
+      setup.getByRole("button", { name: "Next", exact: true }),
+    ).toBeDisabled();
   } finally {
+    await close(app);
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -182,7 +182,11 @@ export default function Devices({
                   </p>
                 )}
                 <div className="button-row">
-                  <button className="primary" onClick={prepare}>
+                  <button
+                    className="primary"
+                    data-help-anchor="target"
+                    onClick={prepare}
+                  >
                     <Icon name="export" size={16} />
                     Prepare files…
                   </button>

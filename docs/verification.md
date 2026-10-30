@@ -1,13 +1,13 @@
 # Verification record
 
-Implementation run: 2026-10-29. Evidence levels below are deliberately separate.
+Implementation run: 2026-10-29–30. Evidence levels below are deliberately separate.
 This file records executed checks, not a promise that every acceptance item has
 passed. Final platform CI and review results are appended as they become known.
 
 ## Source and real file processing
 
 - TypeScript and source/test ESLint passed.
-- 65 unit/integration tests passed: SQLite/settings, native file grants,
+- 120 unit/integration tests passed in the latest completed local suite: SQLite/settings, native file grants,
   credential storage/cleanup contract, reference occurrence order/refresh,
   safe paths, chapter parsing, target identity/history, backup/revision restore,
   acquisition failure/retry/cancel with controlled provider fixtures, updater
@@ -17,6 +17,11 @@ passed. Final platform CI and review results are appended as they become known.
   Reordered playlists reused verified audio without recopying it. Volume swaps
   at audio, manifest and receipt boundaries failed safely; active target edits
   were rejected until writer cleanup completed.
+- Additional checks cover safe vault moves, schema migration rollback/backups,
+  restorable pre-restore revision history, mixed-folder failed-only retry,
+  retained confirmation history, capacity observations, advanced profile/path
+  limits, per-occurrence derivative tags, offline placeholder art, provider
+  cache/backoff/cancellation, and explicit corresponding-source promotion gates.
 - Actual bundled FFmpeg/ffprobe processed independently generated MP3, AAC,
   ALAC and FLAC. Independent tag reads checked title, artist, album credits,
   track/disc values, date, genre, composer, comment, ISRC/MBID and embedded art.
@@ -39,6 +44,10 @@ passed. Final platform CI and review results are appended as they become known.
   and preservation of unsaved inspector edits across all four themes.
   The latest local run also passed Reduce Transparency fallback/reactivation
   and exact preview-to-save support report contents.
+- All three latest packaged UI workflows passed, including target reconnect
+  after restart, saved content scope, numeric albums, batch undo, restore
+  confirmation/recovery and narrow-window focus. The real offline placeholder
+  preview/apply/Undo flow also passed.
 - The 10,000-row packaged fixture passed: approximately 1.2–4.0 s launch to
   rendered count, 28–409 ms search and 94–782 ms page/scroll across two local
   runs with different system load.
@@ -73,6 +82,12 @@ including production packaging/E2E and installed N-to-N+1 replacement.
 Windows passed source/media/package checks but timed out capturing a narrow
 renderer screenshot. Native capture and quit handling were corrected locally;
 the final cross-platform run must establish the current candidate result.
+
+Run 41012834963 at cc544cc subsequently passed Windows x64 production E2E,
+exact NSIS installer smoke and authenticated test-key installed upgrade;
+macOS arm64 passed too. Those results precede the newest profiles/metadata
+work and the controlled Windows LGPL tool build. A fresh native matrix must
+verify the combined candidate. No earlier green run proves those later changes.
 
 ## Remaining external or manual gates
 

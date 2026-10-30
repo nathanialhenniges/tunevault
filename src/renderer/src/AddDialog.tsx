@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { AddInput } from "./Welcome";
 import type { ProviderPreview, Settings } from "../../shared/types";
 import type { Run } from "./Inspector";
 import { bytes, Icon, message, Modal } from "./ui";
@@ -11,19 +12,33 @@ export default function AddDialog({
   settings,
   run,
   onClose,
+  initial = null,
+  onComplete,
 }: {
   settings: Settings;
   run: Run;
   onClose: () => void;
+  initial?: AddInput | null;
+  onComplete?: (kind: "import" | "references" | "acquire") => void;
 }) {
-  const [tab, setTab] = useState<"files" | "source" | "references">("files");
-  const [paths, setPaths] = useState<string[]>([]);
+  const [tab, setTab] = useState<"files" | "source" | "references">(
+    initial?.kind === "references" ? "references" : "files",
+  );
+  const [paths, setPaths] = useState<string[]>(
+    initial?.kind === "files" ? initial.paths : [],
+  );
   const [preview, setPreview] = useState<any>(null);
   const [url, setUrl] = useState("");
   const [source, setSource] = useState<ProviderPreview | null>(null);
-  const [format, setFormat] = useState("tsv");
-  const [text, setText] = useState("");
-  const [name, setName] = useState("Imported playlist");
+  const [format, setFormat] = useState(
+    initial?.kind === "references" ? initial.format : "tsv",
+  );
+  const [text, setText] = useState(
+    initial?.kind === "references" ? initial.text : "",
+  );
+  const [name, setName] = useState(
+    initial?.kind === "references" ? initial.name : "Imported playlist",
+  );
   const [spotifyIndex, setSpotifyIndex] = useState("");
   const spotify = useMemo(() => {
     if (format !== "spotify-json" || !text.trim())
@@ -43,6 +58,24 @@ export default function AddDialog({
   const [ack, setAck] = useState(settings.onlineAcknowledged);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (initial?.kind !== "files" || !initial.paths.length) return;
+    let active = true;
+    setBusy(true);
+    void run("import.preview", { paths: initial.paths })
+      .then((result) => {
+        if (active) setPreview(result);
+      })
+      .catch((reason) => {
+        if (active) setError(message(reason));
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [initial, run]);
   async function execute(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -78,6 +111,7 @@ export default function AddDialog({
               onClick={() =>
                 execute(async () => {
                   await run("import.start", { paths });
+                  onComplete?.("import");
                   onClose();
                 })
               }
@@ -99,6 +133,7 @@ export default function AddDialog({
                   }
                   if (source.capability === "available") {
                     await run("source.acquire", { url });
+                    onComplete?.("acquire");
                     onClose();
                   }
                 })
@@ -134,6 +169,7 @@ export default function AddDialog({
                     text: chosenText,
                     format,
                   });
+                  onComplete?.("references");
                   onClose();
                 })
               }
@@ -169,8 +205,8 @@ export default function AddDialog({
             <Icon name="folder" size={30} />
             <strong>Bring your existing music</strong>
             <p>
-              Choose files or a folder. TuneVault copies audio into your vault
-              and keeps the originals untouched.
+              Choose files or a folder. TuneVault copies audio into your library
+              folder and keeps the originals untouched.
             </p>
             <div className="button-row">
               <button onClick={() => pick()} disabled={busy}>
@@ -183,7 +219,7 @@ export default function AddDialog({
           </div>
           {!settings.vault && (
             <div className="notice">
-              <strong>Choose your archive location first.</strong>
+              <strong>Choose your library folder first.</strong>
               <p>
                 Audio stays in a folder you control, separate from the app's
                 index.
@@ -196,7 +232,7 @@ export default function AddDialog({
                   })
                 }
               >
-                Choose vault folder…
+                Choose library folder…
               </button>
             </div>
           )}
@@ -297,6 +333,22 @@ export default function AddDialog({
       )}
       {tab === "references" && (
         <>
+          <button
+            disabled={busy}
+            onClick={() =>
+              execute(async () => {
+                const path = await run("chooseReference");
+                if (!path) return;
+                const file = await run("references.readFile", { path });
+                setFormat(file.format);
+                setText(file.text);
+                setName(file.name);
+                setSpotifyIndex("");
+              })
+            }
+          >
+            Choose playlist file…
+          </button>
           <p>
             Import only the playlist you choose. Repeated and unavailable
             occurrences keep their positions. File paths and URLs do not grant

@@ -32,3 +32,20 @@ Current native requirements are declared by the pinned runtime and sidecars;
 the controlled Mac media build targets macOS 14+. Fresh quarantine/Gatekeeper
 and Windows reputation prompts remain manual checks. Physical iPod and USB
 playback are separate gates described in hardware-acceptance.md.
+
+Corresponding-source review is a fail-closed promotion gate. After reviewing
+the exact tested candidates and their bundled-tool obligations, the owner
+provides `RELEASE_SOURCE_REVIEW_JSON` in the protected signing environment,
+or `resources/release-source-review.json` for local staging. No approved
+production record is supplied by the repository.
+
+The schema is `{ "schema": 1, "platforms": { ... } }`. Each required platform
+(`darwin-arm64`, `darwin-x64`, `win32-x64`) must have `artifactSha512` matching
+its tested installer, `status: "corresponding-source-reviewed"`, an actual
+`reviewedBy` and ISO `reviewedAt`, plus `sourceArchives` entries containing
+`name`, `sha256`, and an HTTPS `url`. Review covers the complete bundled-tool
+arrangement, including yt-dlp/PyInstaller dependencies, not only FFmpeg/LAME.
+Staging verifies cached archives or downloads their exact reviewed bytes.
+The final gate checks their hashes again. Source archives and the review
+record travel with the candidate and eventual release. Missing review,
+changed installer identity or changed source bytes prevents promotion.

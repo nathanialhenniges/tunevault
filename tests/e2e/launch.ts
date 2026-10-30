@@ -32,6 +32,18 @@ export async function launch(
         onboarded: true,
       }),
     );
+    const snapshot = await page.evaluate(() =>
+      window.tunevault.invoke("snapshot"),
+    );
+    if (!snapshot.settings.vault) {
+      const vault = join(root, "workflow-vault");
+      await mkdir(vault, { recursive: true });
+      const granted = await choose(app, vault, "chooseVault");
+      await page.evaluate(
+        (vault) => window.tunevault.invoke("settings.update", { vault }),
+        granted,
+      );
+    }
   }
   return { app, dataDir, root };
 }

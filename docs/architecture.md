@@ -25,6 +25,12 @@ per-target receipt history. Audio remains in ordinary vault files. A metadata
 edit produces a recoverable managed revision, preserving the original. Missing
 media does not remove playlist history; relink checks exact content evidence.
 
+Schema 2 uses numbered transactional migrations, a verified pre-migration
+SQLite backup, and an integrity check before changing an existing database.
+Moving a vault requires choosing its new location and verifying all recorded
+media/revision hashes before paths are rewritten together. A mismatch leaves
+the existing index and settings intact.
+
 An export target is separate from its transport and format profile. A revision
 change makes affected target receipts stale. Repeated entries remain separate
 occurrences. A complete source refresh is reviewed before applying; source

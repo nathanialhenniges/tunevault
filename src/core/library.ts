@@ -16,6 +16,7 @@ import {
   lstat,
 } from "node:fs/promises";
 import path from "node:path";
+import { CURRENT_DISCLAIMER_VERSION } from "../shared/types";
 import type {
   Chapter,
   ExportPlan,
@@ -278,19 +279,20 @@ export class LibraryService {
     const row = this.db
       .prepare("SELECT data FROM settings WHERE id=1")
       .get() as any;
-    return row
-      ? JSON.parse(row.data)
-      : {
+    return {
           vault: "",
           appearance: "system",
           accent: "blue",
           autoUpdates: true,
           onlineAcknowledged: false,
           disclaimerAccepted: false,
+          disclaimerVersion: 1,
           onboarded: false,
+          tipsSeen: [],
           selection: [],
           view: "tracks",
           filter: "all",
+          ...(row ? JSON.parse(row.data) : {}),
         };
   }
   private saveSettings(value: Settings) {
@@ -491,7 +493,9 @@ export class LibraryService {
               "autoUpdates",
               "onlineAcknowledged",
               "disclaimerAccepted",
+              "disclaimerVersion",
               "onboarded",
+              "tipsSeen",
               "selection",
               "view",
               "filter",
@@ -517,6 +521,15 @@ export class LibraryService {
           if (key in data && typeof data[key] !== "boolean")
             throw new Error("Invalid setting");
         if (data.selection) ids(data.selection);
+        if (data.disclaimerVersion !== undefined &&
+          (!Number.isSafeInteger(data.disclaimerVersion) || data.disclaimerVersion < 1 || data.disclaimerVersion > CURRENT_DISCLAIMER_VERSION))
+          throw new Error("Invalid disclaimer version");
+        if (data.tipsSeen !== undefined) {
+          const tips = ids(data.tipsSeen);
+          if (tips.some(tip => !["import", "playlist", "target"].includes(tip)))
+            throw new Error("Unknown onboarding tip");
+          data.tipsSeen = [...new Set(tips)];
+        }
         if (data.filter) text(data.filter, 100);
         if (data.vault !== undefined) {
           text(data.vault, 4000);

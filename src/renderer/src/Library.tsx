@@ -60,6 +60,8 @@ export default function Library({
   onFavorite,
   sort,
   setSort,
+  onAddMusic,
+  hasVault,
 }: {
   tracks: Track[];
   selected: string[];
@@ -74,6 +76,8 @@ export default function Library({
   onFavorite: (track: Track) => void;
   sort: string;
   setSort: (v: string) => void;
+  onAddMusic: () => void;
+  hasVault: boolean;
 }) {
   const [page, setPage] = useState(0);
   const [album, setAlbum] = useState<string | null>(null);
@@ -127,9 +131,18 @@ export default function Library({
   if (!tracks.length)
     return (
       <Empty title="Your music starts here" icon="library">
-        Import files you own, or add a source you are authorized to archive.
-        <br />
-        Original files stay untouched.
+        Add music you own or are licensed to keep. Your original files stay
+        untouched.
+        <div className="library-empty-actions">
+          <button className="primary" onClick={onAddMusic}>
+            Add music…
+          </button>
+        </div>
+        <p className="small muted">
+          {hasVault
+            ? "Or drop files or folders anywhere in the window."
+            : "Choose your library folder first, then bring in your music."}
+        </p>
       </Empty>
     );
   return (

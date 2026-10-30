@@ -13,7 +13,7 @@ import {
   safeStorage,
   clipboard,
 } from "electron";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname, basename, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { release } from "node:os";
@@ -22,6 +22,7 @@ import { UpdateService } from "../update/service";
 import { updateOptions } from "../update/config";
 import { Credentials } from "./credentials";
 import { FileGrants } from "./permissions";
+import { CURRENT_DISCLAIMER_VERSION } from "../shared/types";
 
 const toolPids = new Set<number>();
 function stopTool(pid: number) {
@@ -158,7 +159,16 @@ async function picker(kind: string): Promise<any> {
             { name: "Artwork", extensions: ["png", "jpg", "jpeg", "webp"] },
           ],
         }
-      : {}),
+      : kind === "chooseReference"
+        ? {
+            filters: [
+              {
+                name: "Playlist references",
+                extensions: ["csv", "tsv", "m3u", "m3u8", "json", "xml"],
+              },
+            ],
+          }
+        : {}),
   });
   const paths = await Promise.all(
     result.filePaths.map((path) => grants.grant(path)),
@@ -183,10 +193,37 @@ async function defaultFolder(input: any) {
     "TuneVault",
     ...(kind === "vault" ? ["Library"] : ["Exports", name]),
   );
-  if (!input?.create) return folder;
-  const { mkdir } = await import("node:fs/promises");
-  await mkdir(folder, { recursive: true });
-  return grants.grant(folder);
+  let selected = folder;
+  if (input?.create) {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(folder, { recursive: true });
+    selected = await grants.grant(folder);
+  }
+  return input?.info ? folderInfo(selected) : selected;
+}
+async function folderInfo(path: string) {
+  const { stat, statfs } = await import("node:fs/promises");
+  const exists = await stat(path)
+    .then((info) => info.isDirectory())
+    .catch(() => false);
+  let ancestor = path;
+  for (;;) {
+    try {
+      if ((await stat(ancestor)).isDirectory()) {
+        const space = await statfs(ancestor);
+        return {
+          path,
+          exists,
+          availableBytes: Number(space.bavail) * Number(space.bsize),
+        };
+      }
+    } catch {
+      /* The suggested folder may not exist yet; measure its existing volume. */
+    }
+    const parent = dirname(ancestor);
+    if (parent === ancestor) return { path, exists, availableBytes: null };
+    ancestor = parent;
+  }
 }
 async function checkPaths(action: string, input: any) {
   if (["import.preview", "import.start"].includes(action)) {
@@ -431,6 +468,53 @@ app
         )
           return picker(action);
         if (action === "defaultFolder") return defaultFolder(raw);
+        if (action === "vault.status") {
+          const state = await command("snapshot");
+          const path = state.settings.vault;
+          if (!path)
+            return { path: "", available: false, availableBytes: null };
+          const info = await folderInfo(path);
+          return {
+            path: info.path,
+            available: info.exists,
+            availableBytes: info.exists ? info.availableBytes : null,
+          };
+        }
+        if (action === "references.readFile") {
+          const { readFile, stat, realpath } = await import("node:fs/promises");
+          await grants.require((raw as any)?.path);
+          const path = await realpath((raw as any).path);
+          const extension = extname(path).toLowerCase();
+          const format = (
+            {
+              ".csv": "csv",
+              ".tsv": "tsv",
+              ".m3u": "m3u",
+              ".m3u8": "m3u",
+              ".json": "spotify-json",
+              ".xml": "apple-xml",
+            } as Record<string, string>
+          )[extension];
+          if (!format)
+            throw new Error(
+              "Choose a CSV, TSV, M3U, Spotify JSON or Apple XML playlist export",
+            );
+          const info = await stat(path);
+          if (!info.isFile() || info.size > 8 * 1024 * 1024)
+            throw new Error(
+              "Playlist reference file must be a regular file no larger than 8 MiB",
+            );
+          const bytes = await readFile(path);
+          if (bytes.length > 8 * 1024 * 1024)
+            throw new Error("Playlist reference file exceeds 8 MiB");
+          let text: string;
+          try {
+            text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          } catch {
+            throw new Error("Playlist reference file must use UTF-8 text");
+          }
+          return { path, name: basename(path, extname(path)), format, text };
+        }
         const input = raw as any;
         if (action === "diagnostics.preview") {
           const state = await command("snapshot");
@@ -855,6 +939,7 @@ app
         );
         if (
           state.settings.disclaimerAccepted &&
+          state.settings.disclaimerVersion >= CURRENT_DISCLAIMER_VERSION &&
           state.settings.autoUpdates &&
           !jobsActive
         ) {

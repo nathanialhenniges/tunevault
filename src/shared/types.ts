@@ -142,6 +142,7 @@ export interface Receipt {
   createdAt: string;
   confirmsReceiptId?: string;
 }
+export const CURRENT_DISCLAIMER_VERSION = 1;
 export interface Settings {
   vault: string;
   appearance: "system" | "light" | "dark";
@@ -149,7 +150,9 @@ export interface Settings {
   autoUpdates: boolean;
   onlineAcknowledged: boolean;
   disclaimerAccepted: boolean;
+  disclaimerVersion: number;
   onboarded: boolean;
+  tipsSeen: string[];
   selection: string[];
   view: "tracks" | "albums";
   filter: string;
