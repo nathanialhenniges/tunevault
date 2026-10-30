@@ -2047,3 +2047,17 @@ button.link:hover:not(:disabled) {
   align-items: center;
   gap: var(--space-2);
 }
+
+/* macOS Settings window: centered toolbar tabs, no page title. */
+.settings-window {
+  height: 100%;
+  overflow: auto;
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
+.settings-window .settings-tabs {
+  justify-content: center;
+  max-width: none;
+}
+.settings-window .settings-sections {
+  max-width: none;
+}

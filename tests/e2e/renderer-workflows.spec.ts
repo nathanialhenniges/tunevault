@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { launch, choose, close } from "./launch";
+import { launch, choose, close, openSettings } from "./launch";
 import { mkdir, realpath, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -341,36 +341,36 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
         }),
       first.id,
     );
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("tab", { name: "Library", exact: true }).click();
+    const settings = await openSettings(app, page);
+    await settings.getByRole("tab", { name: "Library", exact: true }).click();
     await choose(app, backup.path, "chooseRestore");
-    await page
+    await settings
       .getByRole("button", { name: "Restore from backup…", exact: true })
       .click();
     await expect(
-      page.getByRole("dialog", { name: "Review library restore" }),
+      settings.getByRole("dialog", { name: "Review library restore" }),
     ).toBeVisible();
     expect(
       (
         await page.evaluate(() => window.tunevault.invoke("snapshot"))
       ).tracks.find((track: any) => track.id === first.id).metadata.title,
     ).toBe("Changed after backup");
-    await page.keyboard.press("Escape");
+    await settings.keyboard.press("Escape");
     expect(
       (
         await page.evaluate(() => window.tunevault.invoke("snapshot"))
       ).tracks.find((track: any) => track.id === first.id).metadata.title,
     ).toBe("Changed after backup");
-    await page
+    await settings
       .getByRole("button", { name: "Restore from backup…", exact: true })
       .click();
-    await page
+    await settings
       .getByRole("button", { name: "Restore selected backup", exact: true })
       .click();
     await expect(
-      page.getByText("Restored 3 tracks", { exact: true }),
+      settings.getByText("Restored 3 tracks", { exact: true }),
     ).toBeVisible();
-    const recovery = await page
+    const recovery = await settings
       .getByLabel("Recovery backup", { exact: true })
       .inputValue();
     expect((await stat(join(recovery, "bundle.json"))).size).toBeGreaterThan(0);

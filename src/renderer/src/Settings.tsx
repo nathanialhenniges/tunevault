@@ -18,6 +18,7 @@ export default function Settings({
   run,
   pane,
   onPane,
+  windowed = false,
   onShowGuide,
   demo,
   setDemo,
@@ -26,6 +27,7 @@ export default function Settings({
   run: Run;
   pane: SettingsPane;
   onPane: (pane: SettingsPane) => void;
+  windowed?: boolean;
   onShowGuide: () => void;
   demo: boolean;
   setDemo: (v: boolean) => void;
@@ -97,12 +99,14 @@ export default function Settings({
   const title = settingsPanes.find(([id]) => id === pane)?.[1] || "General";
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Settings</h1>
-          <p>Choose how TuneVault looks, where it keeps music and more.</p>
+      {!windowed && (
+        <div className="page-head">
+          <div>
+            <h1>Settings</h1>
+            <p>Choose how TuneVault looks, where it keeps music and more.</p>
+          </div>
         </div>
-      </div>
+      )}
       <div
         className="settings-tabs"
         role="tablist"
@@ -179,8 +183,8 @@ export default function Settings({
             <section>
               <h2>Welcome guide</h2>
               <p className="muted">
-                Walk through choosing a vault, adding music and sending it to a
-                player again.
+                Walk through choosing a library folder, adding music and sending
+                it to a player again.
               </p>
               <div className="button-row">
                 <button onClick={onShowGuide}>Show welcome guide</button>

@@ -1,4 +1,8 @@
-import { _electron, type ElectronApplication } from "@playwright/test";
+import {
+  _electron,
+  type ElectronApplication,
+  type Page,
+} from "@playwright/test";
 import { resolve, join, dirname } from "node:path";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -99,4 +103,24 @@ export async function close(app: ElectronApplication) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+// Opens Settings: its own window on macOS, a page in the main window on
+// Windows. Returns the page that shows the Settings controls.
+export async function openSettings(app: ElectronApplication, page: Page) {
+  const button = page.getByRole("button", { name: "Settings", exact: true });
+  if (process.platform !== "darwin") {
+    await button.click();
+    return page;
+  }
+  const existing = app.windows().find((w) => w.url().endsWith("#settings"));
+  const [settings] = existing
+    ? [existing, await button.click()]
+    : await Promise.all([app.waitForEvent("window"), button.click()]);
+  await settings.getByRole("tablist", { name: "Settings sections" }).waitFor();
+  return settings;
+}
+
+export async function closeSettings(settings: Page, page: Page) {
+  if (settings !== page) await settings.close();
 }

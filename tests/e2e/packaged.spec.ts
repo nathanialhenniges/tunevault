@@ -1,5 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { launch, choose, capture, close } from "./launch";
+import {
+  launch,
+  choose,
+  capture,
+  close,
+  openSettings,
+  closeSettings,
+} from "./launch";
 import { mkdir, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -216,7 +223,7 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
     ).toEqual({ saved: true });
     expect(await readFile(reportPath, "utf8")).toBe(report.text);
 
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await closeSettings(await openSettings(app, page), page);
     await page
       .getByRole("button", { name: "Library", exact: false })
       .first()
@@ -334,14 +341,17 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
       nativeTheme.themeSource = "system";
     });
     await page.getByRole("button", { name: "Close track details" }).click();
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("tab", { name: "Privacy", exact: true }).click();
-    await page
+    const settings = await openSettings(app, page);
+    await settings.getByRole("tab", { name: "Privacy", exact: true }).click();
+    await settings
       .getByRole("button", { name: "Privacy policy", exact: true })
       .click();
-    await expect(page.getByRole("dialog")).toContainText("Nathanial Henniges");
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(settings.getByRole("dialog")).toContainText(
+      "Nathanial Henniges",
+    );
+    await settings.keyboard.press("Escape");
+    await expect(settings.getByRole("dialog")).toHaveCount(0);
+    await closeSettings(settings, page);
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1024, 768),
     );

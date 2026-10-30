@@ -13,7 +13,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { LibraryService } from "../../src/core/library";
 import type { Job } from "../../src/shared/types";
-import { launch, choose, capture, close } from "./launch";
+import {
+  launch,
+  choose,
+  capture,
+  close,
+  openSettings,
+  closeSettings,
+} from "./launch";
 
 test.skip(
   !!process.env.TUNEVAULT_UPGRADE_PHASE,
@@ -228,10 +235,11 @@ test("task setup chooses the real suggested vault, preserves consent and reopens
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(opener).toBeFocused();
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page
+    const settings = await openSettings(app, page);
+    await settings
       .getByRole("button", { name: "Show welcome guide", exact: true })
       .click();
+    await closeSettings(settings, page);
     await expect(
       page.getByRole("dialog", { name: "Set up your library", exact: true }),
     ).toBeVisible();

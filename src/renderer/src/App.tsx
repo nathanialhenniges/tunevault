@@ -11,6 +11,7 @@ import Devices, { ExportDialog, TargetSetup } from "./Devices";
 import Playlists from "./Playlists";
 import Settings, { type SettingsPane } from "./Settings";
 import About from "./About";
+import { readLegal } from "./legal";
 import { demoTracks } from "./fixtures";
 import { Empty, Icon, message, Modal, OperationErrorContext } from "./ui";
 import blueLogo from "./assets/branding/tunevault-wolf-concept.png";
@@ -162,6 +163,12 @@ export default function App() {
         }
         if (kind === "about") setView("about");
         if (kind === "welcome") setGuide(true);
+        if (kind === "demo") {
+          setDemo(detail === "on");
+          setSelected([]);
+          setInspected(null);
+          if (detail === "on") setView("library");
+        }
         if (kind === "legal")
           runRef.current?.("openLegal", { document: detail }).catch(() => {});
       }),
@@ -186,31 +193,7 @@ export default function App() {
       if (action !== "settings.update") setError("");
       try {
         if (action === "openLegal") {
-          const kind = (input as { document: string }).document;
-          const names: Record<string, string> = {
-            terms: "terms-of-use",
-            privacy: "privacy-policy",
-            "third-party": "third-party-notices",
-            install: "install-update",
-            license: "license",
-          };
-          const result = await window.tunevault.invoke("legal.read", {
-            name: names[kind] || kind,
-          });
-          setLegal({
-            title:
-              {
-                terms: "Terms of use",
-                privacy: "Privacy policy",
-                "third-party": "Third-party notices",
-                install: "Install & update help",
-                license: "License",
-              }[kind] || kind,
-            text:
-              typeof result === "string"
-                ? result
-                : result.text || result.content || "",
-          });
+          setLegal(await readLegal((input as { document: string }).document));
           return;
         }
         const result = await window.tunevault.invoke(action, input);
@@ -266,6 +249,15 @@ export default function App() {
     [refresh],
   );
   runRef.current = run;
+  // macOS keeps Settings in its own window; Windows shows it as a page.
+  function openSettings(pane?: SettingsPane) {
+    if (window.tunevault.platform === "darwin") {
+      void run("settings.open", { pane }).catch(() => {});
+      return;
+    }
+    if (pane) setSettingsPane(pane);
+    setView("settings");
+  }
   function chooseSelection(ids: string[]) {
     setSelected(ids);
     if (!demo) void run("settings.update", { selection: ids }).catch(() => {});
@@ -571,7 +563,7 @@ export default function App() {
             <button
               aria-label="Settings"
               className={`nav-item ${view === "settings" ? "active" : ""}`}
-              onClick={() => setView("settings")}
+              onClick={() => openSettings()}
               aria-current={view === "settings" ? "page" : undefined}
             >
               <Icon name="settings" />
@@ -607,12 +599,7 @@ export default function App() {
                     : "Verified update ready"}
                   {releaseStatus.version ? ` · ${releaseStatus.version}` : ""}
                 </span>{" "}
-                <button
-                  onClick={() => {
-                    setSettingsPane("updates");
-                    setView("settings");
-                  }}
-                >
+                <button onClick={() => openSettings("updates")}>
                   Review update…
                 </button>
               </div>

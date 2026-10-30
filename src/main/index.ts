@@ -66,6 +66,13 @@ const pending = new Map<
 >();
 let worker: Electron.UtilityProcess;
 let expectedUrl: string;
+// macOS opens Settings in its own window; it loads the same page at #settings.
+let settingsWindow: BrowserWindow | null = null;
+function broadcast(channel: string, ...args: unknown[]) {
+  for (const target of [window, settingsWindow])
+    if (target && !target.isDestroyed())
+      target.webContents.send(channel, ...args);
+}
 let credentials: Credentials | null = null;
 const commands = new Set([
   "snapshot",
@@ -130,11 +137,19 @@ function command(action: string, input?: unknown): Promise<any> {
   });
 }
 function validateSender(event: Electron.IpcMainInvokeEvent) {
+  const trusted = [
+    [window, expectedUrl],
+    [settingsWindow, `${expectedUrl}#settings`],
+  ] as const;
   if (
-    !window ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame ||
-    event.senderFrame.url !== expectedUrl
+    !trusted.some(
+      ([target, url]) =>
+        target &&
+        !target.isDestroyed() &&
+        event.sender === target.webContents &&
+        event.senderFrame === target.webContents.mainFrame &&
+        event.senderFrame?.url === url,
+    )
   )
     throw new Error("Untrusted request");
 }
@@ -146,30 +161,33 @@ async function picker(kind: string): Promise<any> {
     "chooseBackup",
     "chooseRestore",
   ].includes(kind);
-  const result = await dialog.showOpenDialog(window!, {
-    title: folder ? "Choose folder" : "Choose files",
-    properties: folder
-      ? ["openDirectory"]
-      : kind === "chooseImport"
-        ? ["openFile", "multiSelections"]
-        : ["openFile"],
-    ...(kind === "chooseArtwork"
-      ? {
-          filters: [
-            { name: "Artwork", extensions: ["png", "jpg", "jpeg", "webp"] },
-          ],
-        }
-      : kind === "chooseReference"
+  const result = await dialog.showOpenDialog(
+    BrowserWindow.getFocusedWindow() || window!,
+    {
+      title: folder ? "Choose folder" : "Choose files",
+      properties: folder
+        ? ["openDirectory"]
+        : kind === "chooseImport"
+          ? ["openFile", "multiSelections"]
+          : ["openFile"],
+      ...(kind === "chooseArtwork"
         ? {
             filters: [
-              {
-                name: "Playlist references",
-                extensions: ["csv", "tsv", "m3u", "m3u8", "json", "xml"],
-              },
+              { name: "Artwork", extensions: ["png", "jpg", "jpeg", "webp"] },
             ],
           }
-        : {}),
-  });
+        : kind === "chooseReference"
+          ? {
+              filters: [
+                {
+                  name: "Playlist references",
+                  extensions: ["csv", "tsv", "m3u", "m3u8", "json", "xml"],
+                },
+              ],
+            }
+          : {}),
+    },
+  );
   const paths = await Promise.all(
     result.filePaths.map((path) => grants.grant(path)),
   );
@@ -271,7 +289,7 @@ app
         return;
       }
       if (message.changed) {
-        window?.webContents.send("tunevault:changed");
+        broadcast("tunevault:changed");
         return;
       }
       const request = pending.get(message.id);
@@ -444,10 +462,7 @@ app
       if (process.platform !== "darwin")
         window?.setTitleBarOverlay(captionOverlay());
       window?.webContents.send("tunevault:materials", active);
-      window?.webContents.send(
-        "tunevault:system-theme",
-        nativeTheme.shouldUseDarkColors,
-      );
+      broadcast("tunevault:system-theme", nativeTheme.shouldUseDarkColors);
     };
     nativeTheme.on("updated", updateMaterial);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -666,11 +681,14 @@ app
               "Only choose intentionally exported YouTube/Google cookies from your own account. TuneVault stores an OS-encrypted copy, gives yt-dlp a temporary cookie file for YouTube requests, and removes it when you disconnect or quit. It never reads browser cookies automatically. Never share this file or include it in public issues.",
           });
           if (consent.response !== 1) return credentials!.status();
-          const selected = await dialog.showOpenDialog(window!, {
-            title: "Choose exported YouTube cookies",
-            properties: ["openFile"],
-            filters: [{ name: "Netscape cookies", extensions: ["txt"] }],
-          });
+          const selected = await dialog.showOpenDialog(
+            BrowserWindow.getFocusedWindow() || window!,
+            {
+              title: "Choose exported YouTube cookies",
+              properties: ["openFile"],
+              filters: [{ name: "Netscape cookies", extensions: ["txt"] }],
+            },
+          );
           if (selected.canceled || !selected.filePaths[0])
             return credentials!.status();
           const { readFile, stat } = await import("node:fs/promises");
@@ -718,6 +736,20 @@ app
           return true;
         }
         if (action === "app.about") return app.showAboutPanel();
+        if (action === "settings.open") {
+          if (process.platform === "darwin") await openSettings(input?.pane);
+          else window?.webContents.send("tunevault:menu", "settings");
+          return null;
+        }
+        // The Settings window asks the library window to show the welcome
+        // guide or toggle the design fixtures.
+        if (action === "window.relay") {
+          if (!["welcome", "demo:on", "demo:off"].includes(input?.action))
+            throw new Error("Unknown window action");
+          window?.webContents.send("tunevault:menu", input.action);
+          window?.focus();
+          return null;
+        }
         if (action === "app.info")
           return {
             version: app.getVersion(),
@@ -824,9 +856,66 @@ app
         return result;
       },
     );
+    async function openSettings(pane?: string) {
+      const panes = [
+        "general",
+        "library",
+        "sources",
+        "updates",
+        "privacy",
+        "advanced",
+      ];
+      const show = (target: BrowserWindow) => {
+        if (pane && panes.includes(pane))
+          target.webContents.send("tunevault:menu", `settings:${pane}`);
+        target.show();
+        target.focus();
+      };
+      if (settingsWindow && !settingsWindow.isDestroyed())
+        return show(settingsWindow);
+      const created = new BrowserWindow({
+        show: false,
+        width: 680,
+        height: 620,
+        minWidth: 560,
+        minHeight: 420,
+        title: "Settings",
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        backgroundColor: nativeTheme.shouldUseDarkColors
+          ? "#18191b"
+          : "#ffffff",
+        webPreferences: {
+          preload: join(__dirname, "../preload/index.js"),
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          webSecurity: true,
+        },
+      });
+      settingsWindow = created;
+      created.on("closed", () => {
+        if (settingsWindow === created) settingsWindow = null;
+      });
+      created.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      created.webContents.on("will-navigate", (event) =>
+        event.preventDefault(),
+      );
+      await created.loadURL(`${expectedUrl}#settings`);
+      if (
+        process.env.TUNEVAULT_E2E !== "1" ||
+        process.env.TUNEVAULT_E2E_VISIBLE === "1"
+      )
+        show(created);
+      else if (pane)
+        created.webContents.send("tunevault:menu", `settings:${pane}`);
+    }
     const mac = process.platform === "darwin";
     const send = (action: string) => () =>
-      window?.webContents.send("tunevault:menu", action);
+      mac && action.startsWith("settings")
+        ? void openSettings(action.split(":")[1])
+        : window?.webContents.send("tunevault:menu", action);
     const settingsItem = {
       label: mac ? "Settings…" : "Settings",
       accelerator: "CmdOrCtrl+,",
@@ -941,6 +1030,7 @@ app
     expectedUrl =
       process.env.ELECTRON_RENDERER_URL ||
       pathToFileURL(join(__dirname, "../renderer/index.html")).href;
+    window.on("closed", () => settingsWindow?.close());
     window.webContents.on("page-title-updated", (event) => {
       event.preventDefault();
       window?.setTitle("TuneVault");
@@ -966,7 +1056,7 @@ app
           !jobsActive
         ) {
           await updates.check();
-          window?.webContents.send("tunevault:changed");
+          broadcast("tunevault:changed");
         }
       } catch {
         /* Offline/update errors do not interrupt library use. */
