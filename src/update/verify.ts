@@ -102,7 +102,8 @@ export function verifyEnvelope(
   if (
     !["darwin", "win32"].includes(context.platform) ||
     !["arm64", "x64"].includes(context.arch) ||
-    (context.platform === "win32" && context.arch !== "x64")
+    (context.platform === "win32" && context.arch !== "x64") ||
+    (context.platform === "darwin" && context.arch !== "arm64")
   )
     throw new Error("Unsupported update platform");
   const minimum = envelope.minimumOS[context.platform as "darwin" | "win32"];

@@ -41,6 +41,20 @@ for (const file of [
 if (process.platform === "darwin") {
   const plist = join(application, "Contents/Info.plist");
   assert.equal(
+    process.arch,
+    "arm64",
+    "Only Apple Silicon Mac packages are supported",
+  );
+  assert.equal(
+    execFileSync(
+      "/usr/libexec/PlistBuddy",
+      ["-c", "Print :LSMinimumSystemVersion", plist],
+      { encoding: "utf8" },
+    ).trim(),
+    "15.0",
+    "Packaged macOS minimum must be 15.0",
+  );
+  assert.equal(
     execFileSync(
       "/usr/libexec/PlistBuddy",
       ["-c", "Print :CFBundleIconName", plist],

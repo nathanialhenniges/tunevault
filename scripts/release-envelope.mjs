@@ -39,7 +39,6 @@ if (
 const assets = {};
 for (const [platform, arch, os, extension] of [
   ["darwin", "arm64", "mac", "dmg"],
-  ["darwin", "x64", "mac", "dmg"],
   ["win32", "x64", "win", "exe"],
 ]) {
   const name = `TuneVault-${version}-${os}-${arch}.${extension}`;
@@ -56,7 +55,7 @@ const notes = await readFile(join(root, "release-notes.md"), "utf8");
 if (notes.length > 40_000)
   throw new Error("Release notes exceed envelope bound");
 const bytes = Buffer.from(
-  `${JSON.stringify({ schema: 1, version, channel: "stable", minimumOS: { darwin: "14.0.0", win32: "10.0.19045" }, notes, assets }, null, 2)}\n`,
+  `${JSON.stringify({ schema: 1, version, channel: "stable", minimumOS: { darwin: "15.0.0", win32: "10.0.0" }, notes, assets }, null, 2)}\n`,
 );
 const signature = sign(null, bytes, privateKey);
 if (!verify(null, bytes, derived, signature))

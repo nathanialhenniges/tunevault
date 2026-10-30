@@ -1,6 +1,7 @@
 # TuneVault
 
-TuneVault is a local music archive for macOS and Windows. Import owned audio,
+TuneVault is a local music archive for Apple Silicon Macs running macOS 15+
+and x64 PCs running Windows 10+. Import owned audio,
 review metadata, keep ordered playlists and prepare files for portable players.
 Nathanial Henniges personally maintains and publishes the app.
 
@@ -28,7 +29,10 @@ closed until an owner production key is configured. See
 
 ## Getting Started
 
-Public installers have not been published by this rebuild. For development:
+Public installers have not been published by this rebuild. Current installer
+targets are an Apple Silicon DMG and a Windows x64 NSIS installer. Intel Macs
+are not supported. A Linux AppImage has been discussed but is not implemented
+or verified. For development:
 
 ```bash
 npm ci
@@ -74,7 +78,7 @@ fictional design library is opt-in under Settings and contains no audio.
 ### Prerequisites
 
 - Node 24.13+ and npm; use the committed package-lock.json.
-- Native macOS or Windows for the corresponding packaging/installer gates.
+- An Apple Silicon Mac with macOS 15+ or a Windows 10+ x64 PC for the corresponding packaging/installer gates.
 - Xcode with Icon Composer for macOS native icon compilation.
 - Xcode Command Line Tools for the controlled macOS media-tool build.
 - Network access to prepare pinned third-party sources/binaries.

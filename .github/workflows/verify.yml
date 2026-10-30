@@ -20,10 +20,6 @@ jobs:
             platform: darwin
             arch: arm64
             builder: mac
-          - runner: macos-26-intel
-            platform: darwin
-            arch: x64
-            builder: mac
           - runner: windows-2025
             platform: win32
             arch: x64

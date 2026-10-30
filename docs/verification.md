@@ -91,6 +91,17 @@ verify the combined candidate. No earlier green run proves those later changes.
 
 ## Remaining external or manual gates
 
+Current platform policy: Apple Silicon Macs on macOS 15+ and Windows 10+ x64.
+Earlier Intel Mac checks below or above are historical evidence, not a current
+release target. Linux AppImage support is not implemented or verified.
+
+The platform-policy change passed typecheck, lint, 131 unit/integration tests,
+macOS ARM64 DMG packaging/resource verification and six packaged E2E tests.
+The app executable is ARM64 and its Info.plist requires macOS 15.0; the controlled
+media tools also have a 15.0 deployment minimum. These local checks ran on the
+available newer Mac, not macOS 15. Windows installer minimum-version enforcement
+and the reduced native CI matrix still require their new CI run.
+
 - Native Windows x64 NSIS install/authenticated update/uninstall retention.
 - Declared minimum OS checks; CI does not exercise the oldest supported OS.
 - Hands-on macOS 26 appearance, VoiceOver/NVDA, owner-driven native dialogs/drop,

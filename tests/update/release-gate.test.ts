@@ -32,7 +32,6 @@ it("requires exact production installer smoke and separately identified upgrade 
     const sourceReviews: Record<string, unknown> = {};
     for (const [platform, os, arch, ext] of [
       ["darwin", "mac", "arm64", "dmg"],
-      ["darwin", "mac", "x64", "dmg"],
       ["win32", "win", "x64", "exe"],
     ]) {
       const name = `TuneVault-4.0.0-${os}-${arch}.${ext}`;

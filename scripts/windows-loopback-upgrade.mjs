@@ -36,7 +36,7 @@ const envelope = Buffer.from(
     channel: "stable",
     version,
     notes: "Disposable local installed-update test",
-    minimumOS: { darwin: "14.0.0", win32: "10.0.19045" },
+    minimumOS: { darwin: "15.0.0", win32: "10.0.0" },
     assets: {
       "win32-x64": {
         name: filename,

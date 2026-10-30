@@ -1,7 +1,9 @@
 # Install and update
 
-The intended artifacts are separate macOS arm64/x64 DMGs and a Windows x64
-per-user NSIS installer. An artifact's existence is not proof of native
+The intended artifacts are an Apple Silicon macOS 15+ DMG and a Windows 10+
+x64 per-user NSIS installer. Intel Macs are not supported. Linux AppImage
+packaging has been discussed but is not implemented or verified.
+An artifact's existence is not proof of native
 installation or hardware compatibility; see verification.md for actual checks.
 
 These builds have no Developer ID/notarization or Microsoft publisher signing.

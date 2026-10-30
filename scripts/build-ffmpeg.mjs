@@ -6,6 +6,8 @@ import { cpus, tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 
 const windows = process.platform === "win32";
+if (!windows && process.arch !== "arm64")
+  throw new Error("TuneVault supports Apple Silicon Macs only");
 if (!windows && process.platform !== "darwin")
   throw new Error(
     "The controlled FFmpeg build supports native macOS and Windows",
@@ -84,7 +86,7 @@ for (const source of archives) {
   await copyFile(path, join(root, source.file));
 }
 const jobs = String(Math.min(8, cpus().length));
-const buildEnv = { ...process.env, MACOSX_DEPLOYMENT_TARGET: "14.0" };
+const buildEnv = { ...process.env, MACOSX_DEPLOYMENT_TARGET: "15.0" };
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
 const run = (file, args, cwd, env = buildEnv) =>
   windows
@@ -192,9 +194,9 @@ for (const name of ["ffmpeg", "ffprobe"]) {
   const minimum = /cmd LC_BUILD_VERSION[\s\S]*?\bminos\s+(\S+)/.exec(
     loadCommands,
   )?.[1];
-  if (!minimum || !/^14\.0(?:\.0)?$/.test(minimum))
+  if (!minimum || !/^15\.0(?:\.0)?$/.test(minimum))
     throw new Error(
-      `${name} deployment minimum is ${minimum || "unknown"}, expected macOS14.0`,
+      `${name} deployment minimum is ${minimum || "unknown"}, expected macOS15.0`,
     );
 }
 await copyFile(join(ffmpeg, "COPYING.LGPLv2.1"), join(root, "ffmpeg.LICENSE"));

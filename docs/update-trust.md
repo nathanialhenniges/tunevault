@@ -44,7 +44,7 @@ The source fixtures under `tests/fixtures/update-test-*` are disposable public t
 
 ## Candidate authentication and publication
 
-The native verification workflow builds production candidates once on macOS arm64, macOS x64 and Windows x64, tests their packaged resources/UI, then exercises separate installed-upgrade fixtures. The evidence records the production candidate's filename, size and SHA-512. An unsuccessful or missing matrix leg blocks the release workflow.
+The native verification workflow builds production candidates once for Apple Silicon Macs on macOS 15+ and Windows 10+ x64 PCs, tests their packaged resources/UI, then exercises separate installed-upgrade fixtures. The evidence records the production candidate's filename, size and SHA-512. An unsuccessful or missing matrix leg blocks the release workflow. CI runner versions do not establish verification on the oldest supported OS.
 
 The manual **Prepare or promote verified release** workflow defaults `publish` to false. It collects all three candidates, adds release notes/notices, signs one envelope, validates it, and uploads an authenticated candidate artifact. `scripts/release-envelope.mjs` requires the private key to derive one of the committed public keys. Its exact UTF-8 bytes are signed before any client parses the JSON.
 

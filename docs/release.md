@@ -5,7 +5,7 @@ change GitHub settings or publish assets without a separate instruction.
 
 1. Install with npm ci and prepare the native tool bundle using tools:prepare.
 2. Run lint, typecheck, unit/integration tests, binary verification and build.
-3. Package on each native runner: macOS arm64, macOS x64 and Windows x64.
+3. Package on each native runner: macOS arm64 and Windows x64.
 4. Test the exact packaged executable and bundled resources with test:e2e.
 5. Run scripts/build-upgrade-candidates.mjs for isolated N -> N+1 installers.
    These separate test builds embed a disposable public key and loopback
@@ -28,8 +28,10 @@ installed-upgrade proof. Both automatic download and install-on-quit are off.
 Test-only signing keys are deliberately disposable and confer no production
 trust. Installer test artifacts must never be published as production builds.
 
-Current native requirements are declared by the pinned runtime and sidecars;
-the controlled Mac media build targets macOS 14+. Fresh quarantine/Gatekeeper
+Current targets are Apple Silicon Macs running macOS 15+ and Windows 10+
+x64 PCs (Windows minimum version 10.0.0; no build-19045 restriction).
+Intel Macs are not supported. A Linux AppImage is not implemented or verified.
+Fresh quarantine/Gatekeeper
 and Windows reputation prompts remain manual checks. Physical iPod and USB
 playback are separate gates described in hardware-acceptance.md.
 
@@ -40,7 +42,7 @@ or `resources/release-source-review.json` for local staging. No approved
 production record is supplied by the repository.
 
 The schema is `{ "schema": 1, "platforms": { ... } }`. Each required platform
-(`darwin-arm64`, `darwin-x64`, `win32-x64`) must have `artifactSha512` matching
+(`darwin-arm64`, `win32-x64`) must have `artifactSha512` matching
 its tested installer, `status: "corresponding-source-reviewed"`, an actual
 `reviewedBy` and ISO `reviewedAt`, plus `sourceArchives` entries containing
 `name`, `sha256`, and an HTTPS `url`. Review covers the complete bundled-tool

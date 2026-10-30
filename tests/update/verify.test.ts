@@ -32,14 +32,14 @@ const context = {
   version: "4.0.0",
   platform: "darwin",
   arch: "arm64",
-  osVersion: "14.0.0",
+  osVersion: "15.0.0",
 };
 const envelope = (): ReleaseEnvelope => ({
   schema: 1,
   version: "4.0.1",
   channel: "stable",
   notes: "Test release",
-  minimumOS: { darwin: "14.0.0", win32: "10.0.0" },
+  minimumOS: { darwin: "15.0.0", win32: "10.0.0" },
   assets: { "darwin-arm64": { ...asset } },
 });
 function signed(value: unknown) {
@@ -88,14 +88,33 @@ describe("production update authentication", () => {
   it("rejects missing assets, wrong architecture and old OS", () => {
     expect(() => verify({ ...envelope(), assets: {} })).toThrow("asset");
     expect(() => verify(envelope(), { ...context, arch: "x64" })).toThrow(
-      "asset",
+      "platform",
     );
     expect(() => verify(envelope(), { ...context, platform: "linux" })).toThrow(
       "platform",
     );
     expect(() =>
-      verify(envelope(), { ...context, osVersion: "13.6.0" }),
+      verify(envelope(), { ...context, osVersion: "14.7.0" }),
     ).toThrow("operating system");
+  });
+  it("accepts Windows 10 without a 22H2 build restriction and rejects pre-Windows 10", () => {
+    const value = envelope();
+    const windowsAsset = {
+      ...asset,
+      name: "TuneVault-4.0.1-win-x64.exe",
+      url: "https://github.com/nathanialhenniges/tunevault/releases/download/v4.0.1/TuneVault-4.0.1-win-x64.exe",
+    };
+    value.assets = { "win32-x64": windowsAsset };
+    const windows = {
+      ...context,
+      platform: "win32",
+      arch: "x64",
+      osVersion: "10.0.10240",
+    };
+    expect(verify(value, windows)?.asset).toEqual(windowsAsset);
+    expect(() => verify(value, { ...windows, osVersion: "6.3.9600" })).toThrow(
+      "operating system",
+    );
   });
   it.each([
     "http://github.com/a",

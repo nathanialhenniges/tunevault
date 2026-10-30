@@ -45,49 +45,6 @@
         "notice": true
       }
     ],
-    "darwin-x64": [
-      {
-        "name": "yt-dlp",
-        "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp_macos",
-        "sha256": "0f922c15ccc0b83eefa1c8bc9104e434318c4bf16e408e1ee93b7745a6efe0aa",
-        "size": 37466304,
-        "version": "2026.10.26",
-        "license": "GPL-3.0-or-later",
-        "archive": null,
-        "entry": "deno"
-      },
-      {
-        "name": "deno",
-        "url": "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-apple-darwin.zip",
-        "sha256": "4b2f5edd2639b7470f034238b321d7002d8dfb4726d8558f52c17afac370eb2c",
-        "size": 42797031,
-        "version": "2.9.8",
-        "license": "MIT",
-        "archive": "zip",
-        "entry": "deno"
-      },
-      {
-        "name": "yt-dlp-source.tar.gz",
-        "url": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.tar.gz",
-        "sha256": "21f942d258d25cc4e60b4982a25c423460f0bebb835f38e6dfd1fcb140087f95",
-        "size": 6019106,
-        "notice": true
-      },
-      {
-        "name": "yt-dlp.THIRD_PARTY_LICENSES.txt",
-        "url": "https://raw.githubusercontent.com/yt-dlp/yt-dlp/2026.10.26/THIRD_PARTY_LICENSES.txt",
-        "sha256": "472aefe951c7db35e1657c1d13fd337140511ed6f2b329205105ad441c5a02b7",
-        "size": 243550,
-        "notice": true
-      },
-      {
-        "name": "deno.LICENSE.md",
-        "url": "https://raw.githubusercontent.com/denoland/deno/v2.9.8/LICENSE.md",
-        "sha256": "f62497fffecc0852960c8d3e6934b9db86d16396e9b604072e923892cae3a588",
-        "size": 1074,
-        "notice": true
-      }
-    ],
     "win32-x64": [
       {
         "name": "yt-dlp",

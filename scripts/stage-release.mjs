@@ -19,7 +19,7 @@ async function collect(directory) {
     if (entry.isDirectory()) await collect(path);
     else if (
       /\.(dmg|exe|yml)$/.test(entry.name) ||
-      /^evidence-(darwin-(arm64|x64)|win32-x64)\.json$/.test(entry.name)
+      /^evidence-(darwin-arm64|win32-x64)\.json$/.test(entry.name)
     )
       await copyFile(path, join(destination, basename(path)));
   }
@@ -38,7 +38,7 @@ const sourceReview = JSON.parse(sourceReviewText);
 if (sourceReview.schema !== 1 || !sourceReview.platforms)
   throw new Error("Invalid corresponding-source review schema");
 const stagedSources = new Set();
-for (const platform of ["darwin-arm64", "darwin-x64", "win32-x64"]) {
+for (const platform of ["darwin-arm64", "win32-x64"]) {
   const review = sourceReview.platforms[platform];
   if (
     !review ||

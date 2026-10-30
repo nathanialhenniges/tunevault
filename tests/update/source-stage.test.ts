@@ -33,7 +33,7 @@ it("stages only an explicit source review and digest-verified corresponding-sour
     const review = {
       schema: 1,
       platforms: Object.fromEntries(
-        ["darwin-arm64", "darwin-x64", "win32-x64"].map((platform) => [
+        ["darwin-arm64", "win32-x64"].map((platform) => [
           platform,
           {
             status: "corresponding-source-reviewed",

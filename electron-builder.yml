@@ -28,19 +28,24 @@ publish:
   owner: nathanialhenniges
   repo: tunevault
 mac:
-  target: dmg
+  target:
+    - target: dmg
+      arch: [arm64]
   category: public.app-category.music
   identity: null
   hardenedRuntime: false
-  minimumSystemVersion: "14.0"
+  minimumSystemVersion: "15.0"
   icon: build/TuneVault.icon
 dmg:
   sign: false
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch: [x64]
   signExecutable: false
   icon: build/icon.ico
 nsis:
+  include: build/installer.nsh
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

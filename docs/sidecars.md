@@ -38,9 +38,9 @@ Provider changes can still require a new tested whole-app release. A successful 
 
 ## Platform and release boundaries
 
-Declared native artifact targets are macOS arm64/x64 and Windows x64. The controlled Mac build and package configuration target macOS 14+. Electron 45 itself requires macOS 13+, but the app cannot advertise a lower minimum than its complete bundle. The updater's declared Windows minimum is Windows 10 build 19045. These declarations are compatibility targets, not proof that every minimum-version OS was tested. Linux and Windows ARM are not supported release artifacts.
+Declared native artifact targets are Apple Silicon Macs running macOS 15+ and Windows 10+ x64 PCs. The controlled Mac build and package configuration target macOS 15+. The updater's Windows minimum is 10.0.0, without a build-19045 restriction. These declarations are compatibility targets, not proof that every minimum-version OS was tested. Intel Macs and Windows ARM are not supported release artifacts. Linux AppImage packaging has been discussed but is not implemented or verified.
 
-The available local evidence is macOS arm64. Windows and macOS x64 require their native CI and installer/upgrade checks; Rosetta or unpacked executable launch alone does not establish native installed-platform support. Fresh quarantine/Gatekeeper, SmartScreen and physical portable-player behavior remain separate manual evidence.
+The available local evidence is macOS arm64. Windows x64 requires its native CI and installer/upgrade checks; an unpacked executable launch alone does not establish native installed-platform support. Historical Intel Mac checks do not establish a current supported target. Fresh quarantine/Gatekeeper, SmartScreen and physical portable-player behavior remain separate manual evidence.
 
 Before public distribution, audit the exact packaged binaries and all dependencies for corresponding-source and notice requirements. The bundle includes yt-dlp's matching source archive and upstream third-party notices, but that is not blanket clearance for every PyInstaller component or Windows FFmpeg dependency. Preserve a compliant corresponding-source distribution or offer for the exact files shipped; a generic upstream link cannot replace an applicable obligation. Do not promote a candidate with unresolved source/license completeness.
 

@@ -30,7 +30,7 @@ if (
   envelope.version !== pkg.version
 )
   throw new Error("Release/package schema or version mismatch");
-for (const platform of ["darwin-arm64", "darwin-x64", "win32-x64"]) {
+for (const platform of ["darwin-arm64", "win32-x64"]) {
   const asset = envelope.assets[platform];
   if (!asset || !/^[A-Za-z0-9._-]+$/.test(asset.name))
     throw new Error(`Missing ${platform} artifact`);
