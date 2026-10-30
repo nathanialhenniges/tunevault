@@ -8,7 +8,9 @@ import Playlists from "./Playlists";
 import Settings from "./Settings";
 import { demoTracks } from "./fixtures";
 import { Empty, Icon, message, Modal, OperationErrorContext } from "./ui";
-import logo from "./assets/branding/tunevault-wolf-concept.png";
+import blueLogo from "./assets/branding/tunevault-wolf-concept.png";
+import orangeLogo from "./assets/branding/tunevault-wolf-orange.png";
+import { Disclaimer, Onboarding, Splash } from "./Welcome";
 
 const empty: Snapshot = {
   tracks: [],
@@ -23,6 +25,8 @@ const empty: Snapshot = {
     accent: window.tunevault.bootAppearance?.accent || "blue",
     autoUpdates: true,
     onlineAcknowledged: false,
+    disclaimerAccepted: true,
+    onboarded: true,
     selection: [],
     view: "tracks",
     filter: "all",
@@ -66,6 +70,7 @@ export default function App() {
     [legal, setLegal] = useState<{ title: string; text: string } | null>(null),
     [playlistChoice, setPlaylistChoice] = useState(""),
     [loading, setLoading] = useState(true),
+    [guide, setGuide] = useState(false),
     [releaseStatus, setReleaseStatus] = useState<{
       status: string;
       version?: string;
@@ -314,6 +319,20 @@ export default function App() {
     },
     [run],
   );
+  const logo = snapshot.settings.accent === "orange" ? orangeLogo : blueLogo;
+  const legalModal = legal && (
+    <Modal title={legal.title} wide onClose={() => setLegal(null)}>
+      <pre className="legal-text">{legal.text}</pre>
+    </Modal>
+  );
+  if (loading) return <Splash logo={logo} status={status} />;
+  if (!snapshot.settings.disclaimerAccepted)
+    return (
+      <OperationErrorContext.Provider value={error}>
+        <Disclaimer logo={logo} run={run} />
+        {legalModal}
+      </OperationErrorContext.Provider>
+    );
   return (
     <OperationErrorContext.Provider value={error}>
       <div
@@ -747,6 +766,7 @@ export default function App() {
             <Settings
               settings={snapshot.settings}
               run={run}
+              onShowGuide={() => setGuide(true)}
               demo={demo}
               setDemo={(value) => {
                 setDemo(value);
@@ -851,10 +871,18 @@ export default function App() {
             </p>
           </Modal>
         )}
-        {legal && (
-          <Modal title={legal.title} wide onClose={() => setLegal(null)}>
-            <pre className="legal-text">{legal.text}</pre>
-          </Modal>
+        {legalModal}
+        {(guide || !snapshot.settings.onboarded) && !demo && (
+          <Onboarding
+            settings={snapshot.settings}
+            run={run}
+            onAddMusic={() => setModal("add")}
+            onFinish={() => {
+              setGuide(false);
+              if (!snapshot.settings.onboarded)
+                run("settings.update", { onboarded: true }).catch(() => {});
+            }}
+          />
         )}
       </div>
     </OperationErrorContext.Provider>

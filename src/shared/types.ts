@@ -148,6 +148,8 @@ export interface Settings {
   accent: "blue" | "orange";
   autoUpdates: boolean;
   onlineAcknowledged: boolean;
+  disclaimerAccepted: boolean;
+  onboarded: boolean;
   selection: string[];
   view: "tracks" | "albums";
   filter: string;

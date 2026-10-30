@@ -286,6 +286,8 @@ export class LibraryService {
           accent: "blue",
           autoUpdates: true,
           onlineAcknowledged: false,
+          disclaimerAccepted: false,
+          onboarded: false,
           selection: [],
           view: "tracks",
           filter: "all",
@@ -488,6 +490,8 @@ export class LibraryService {
               "accent",
               "autoUpdates",
               "onlineAcknowledged",
+              "disclaimerAccepted",
+              "onboarded",
               "selection",
               "view",
               "filter",
@@ -504,7 +508,12 @@ export class LibraryService {
           throw new Error("Invalid accent");
         if (data.view && !["tracks", "albums"].includes(data.view))
           throw new Error("Invalid view");
-        for (const key of ["autoUpdates", "onlineAcknowledged"])
+        for (const key of [
+          "autoUpdates",
+          "onlineAcknowledged",
+          "disclaimerAccepted",
+          "onboarded",
+        ])
           if (key in data && typeof data[key] !== "boolean")
             throw new Error("Invalid setting");
         if (data.selection) ids(data.selection);

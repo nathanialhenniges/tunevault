@@ -7,11 +7,13 @@ import logo from "./assets/branding/tunevault-wolf-concept.png";
 export default function Settings({
   settings,
   run,
+  onShowGuide,
   demo,
   setDemo,
 }: {
   settings: AppSettings;
   run: Run;
+  onShowGuide: () => void;
   demo: boolean;
   setDemo: (v: boolean) => void;
 }) {
@@ -402,15 +404,15 @@ export default function Settings({
             >
               Third-party notices
             </button>
+            <button onClick={onShowGuide}>Show welcome guide</button>
             <button onClick={() => run("openLegal", { document: "install" })}>
               Install & update help
             </button>
           </div>
           <p className="small muted">
-            Legal documents are drafts for review. The blue wolf logo and
-            fictional fixture artwork were AI-generated; their original PNG
-            provenance is retained. App code is MIT; bundled third-party tools
-            retain their own licenses.
+            Legal documents are drafts for review. The fictional demo album
+            covers are AI-generated and contain no audio. App code is MIT;
+            bundled third-party tools retain their own licenses.
           </p>
           <button
             onClick={() =>

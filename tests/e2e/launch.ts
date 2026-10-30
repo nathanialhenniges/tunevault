@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 export async function launch(
   dataDir?: string,
+  { firstRun = false } = {},
 ): Promise<{ app: ElectronApplication; dataDir: string; root: string }> {
   const root = await mkdtemp(join(tmpdir(), "tunevault-e2e-"));
   dataDir ||= join(root, "data");
@@ -21,6 +22,17 @@ export async function launch(
     env: { ...process.env, TUNEVAULT_E2E: "1", TUNEVAULT_TEST_DATA: dataDir },
     timeout: 30000,
   });
+  if (!firstRun) {
+    // Workflow tests start past the first-run disclaimer and welcome guide.
+    const page = await app.firstWindow();
+    await page.waitForFunction(() => !!window.tunevault);
+    await page.evaluate(() =>
+      window.tunevault.invoke("settings.update", {
+        disclaimerAccepted: true,
+        onboarded: true,
+      }),
+    );
+  }
   return { app, dataDir, root };
 }
 export async function choose(
