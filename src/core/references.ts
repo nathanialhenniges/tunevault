@@ -1,7 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Chapter, Occurrence, Playlist, Reference } from "../shared/types";
 import { randomUUID } from "node:crypto";
-import { text } from "./safety";
+import { object, text } from "./safety";
 export function parseDelimited(input: string, delimiter: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [],
@@ -31,7 +31,29 @@ export function parseDelimited(input: string, delimiter: string): string[][] {
   if (row.some(Boolean)) rows.push(row);
   return rows;
 }
-export function parseReferences(value: string, format: string): Reference[] {
+export function spotifyPlaylists(
+  value: string,
+): { index: number; name: string; count: number }[] {
+  text(value, 8 * 1024 * 1024);
+  const data = object(JSON.parse(value));
+  const playlists = Array.isArray(data.playlists) ? data.playlists : [data];
+  if (playlists.length > 10000)
+    throw new Error("Too many playlists in data export");
+  return playlists.map((playlist: any, index: number) => {
+    if (!Array.isArray(playlist?.items))
+      throw new Error("Expected Spotify playlist items");
+    return {
+      index,
+      name: text(playlist.name || `Playlist ${index + 1}`, 200),
+      count: playlist.items.length,
+    };
+  });
+}
+export function parseReferences(
+  value: string,
+  format: string,
+  selectedPlaylist?: number,
+): Reference[] {
   text(value, 8 * 1024 * 1024);
   let refs: Reference[] = [];
   if (format === "csv" || format === "tsv") {
@@ -47,7 +69,7 @@ export function parseReferences(value: string, format: string): Reference[] {
       title: column(row, ["title", "name"]),
       artist: column(row, ["artist"]),
       album: column(row, ["album"]),
-      duration: duration(column(row, ["duration", "total time"])),
+      duration: duration(column(row, ["duration", "time", "total time"])),
       url: column(row, ["url", "location"]) || undefined,
     }));
   } else if (format === "m3u") {
@@ -73,11 +95,25 @@ export function parseReferences(value: string, format: string): Reference[] {
       }
     }
   } else if (format === "spotify-json") {
-    const data = JSON.parse(value);
-    const playlist = data.playlists?.length === 1 ? data.playlists[0] : data;
-    if (data.playlists?.length > 1)
-      throw new Error("Select/export only one Spotify playlist at a time");
-    if (!Array.isArray(playlist.items))
+    const data = object(JSON.parse(value));
+    if (
+      selectedPlaylist !== undefined &&
+      (!Number.isInteger(selectedPlaylist) ||
+        selectedPlaylist < 0 ||
+        !Array.isArray(data.playlists) ||
+        selectedPlaylist >= data.playlists.length)
+    )
+      throw new Error("Invalid Spotify playlist selection");
+    if (data.playlists?.length > 1 && selectedPlaylist === undefined)
+      throw new Error("Choose one Spotify playlist from this data export");
+    const playlist = Array.isArray(data.playlists)
+      ? data.playlists[selectedPlaylist ?? 0]
+      : data;
+    if (
+      !playlist ||
+      typeof playlist !== "object" ||
+      !Array.isArray(playlist.items)
+    )
       throw new Error("Expected a selected Spotify playlist with items");
     refs = playlist.items.map((item: any) => {
       const track = item.track || item.episode;
@@ -92,7 +128,7 @@ export function parseReferences(value: string, format: string): Reference[] {
     });
   } else if (format === "apple-xml") {
     value = value.replace(
-      /<!DOCTYPE\s+plist\s+PUBLIC\s+"-\/\/Apple\/\/DTD PLIST 1\.0\/\/EN"\s+"https?:\/\/www\.apple\.com\/DTDs\/PropertyList-1\.0\.dtd"\s*>/i,
+      /<!DOCTYPE\s+plist\s+PUBLIC\s+"-\/\/Apple(?: Computer)?\/\/DTD PLIST 1\.0\/\/EN"\s+"https?:\/\/www\.apple\.com\/DTDs\/PropertyList-1\.0\.dtd"\s*>/i,
       "",
     );
     if (/<!DOCTYPE|<!ENTITY/i.test(value))
@@ -103,13 +139,16 @@ export function parseReferences(value: string, format: string): Reference[] {
       preserveOrder: true,
       ignoreAttributes: false,
       processEntities: false,
+      parseTagValue: false,
+      trimValues: false,
     }).parse(value);
     const decode = (nodes: any[]): any => {
       const dict = nodes.find((n) => n.dict);
       if (dict) {
-        const result: Record<string, any> = {};
+        const result: Record<string, any> = Object.create(null);
         let key = "";
         for (const node of dict.dict) {
+          if (Object.keys(node).every((key) => key === "#text")) continue;
           if (node.key) key = String(node.key[0]?.["#text"] ?? "");
           else if (key) {
             result[key] = decode([node]);
@@ -119,7 +158,12 @@ export function parseReferences(value: string, format: string): Reference[] {
         return result;
       }
       const array = nodes.find((n) => n.array);
-      if (array) return array.array.map((n: any) => decode([n]));
+      if (array)
+        return array.array
+          .filter((node: any) =>
+            Object.keys(node).some((key) => key !== "#text"),
+          )
+          .map((n: any) => decode([n]));
       for (const node of nodes) {
         for (const tag of ["string", "integer", "real", "date"])
           if (node[tag])
@@ -127,11 +171,27 @@ export function parseReferences(value: string, format: string): Reference[] {
               .map((n: any) => n["#text"] ?? "")
               .join("")
               .replace(
-                /&(amp|lt|gt|quot|apos);/g,
-                (_match: string, name: string) =>
-                  ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" })[
-                    name
-                  ] || _match,
+                /&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi,
+                (match: string, entity: string) => {
+                  if (entity[0] !== "#")
+                    return (
+                      { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[
+                        entity.toLowerCase()
+                      ] || match
+                    );
+                  const number =
+                    entity[1].toLowerCase() === "x"
+                      ? parseInt(entity.slice(2), 16)
+                      : Number(entity.slice(1));
+                  if (
+                    !Number.isInteger(number) ||
+                    number <= 0 ||
+                    number > 0x10ffff ||
+                    (number >= 0xd800 && number <= 0xdfff)
+                  )
+                    throw new Error("Invalid XML character reference");
+                  return String.fromCodePoint(number);
+                },
               );
         if (node.true) return true;
         if (node.false) return false;
@@ -216,6 +276,17 @@ export function validateChapters(
     previous = chapter.start;
   }
 }
+export interface RefreshChange {
+  kind: "added" | "removed" | "reordered" | "unavailable" | "metadata-changed";
+  occurrenceId: string;
+  title: string;
+  artist: string;
+  beforeOrdinal: number | null;
+  afterOrdinal: number | null;
+  before: Reference | null;
+  after: Reference | null;
+  attachedTrackId: string | null;
+}
 export function reconcile(
   playlist: Playlist,
   references: Reference[],
@@ -227,57 +298,121 @@ export function reconcile(
   reordered: number;
   unavailable: number;
   metadataChanged: number;
+  changes: RefreshChange[];
 } {
   if (!complete)
     throw new Error(
       "Incomplete refresh: previous complete snapshot has been preserved",
     );
-  const pools = new Map<string, Occurrence[]>();
-  const key = (ref: Reference) =>
-    ref.sourceId || ref.url || `${ref.title}\0${ref.artist}\0${ref.album}`;
-  for (const entry of playlist.entries.filter((e) => !e.manual)) {
-    const k = key(entry.reference);
-    pools.set(k, [...(pools.get(k) || []), entry]);
+  const pools = new Map<string, Occurrence[]>(),
+    oldById = new Map(
+      playlist.entries.map((entry, index) => [
+        entry.id,
+        { entry, ordinal: index + 1 },
+      ]),
+    );
+  const key = (reference: Reference) =>
+    reference.sourceId ||
+    reference.url ||
+    `${reference.title}\0${reference.artist}\0${reference.album}`;
+  for (const entry of playlist.entries.filter((entry) => !entry.manual)) {
+    const identity = key(entry.reference);
+    pools.set(identity, [...(pools.get(identity) || []), entry]);
   }
-  let added = 0,
-    reordered = 0,
-    metadataChanged = 0;
-  const entries = references.map((ref, index) => {
-    const old = pools.get(key(ref))?.shift();
-    if (!old) {
-      added++;
+  const entries: Occurrence[] = references.map((reference) => {
+    const old = pools.get(key(reference))?.shift();
+    if (!old)
       return {
         id: randomUUID(),
         trackId: null,
-        reference: ref,
+        reference,
         manual: false,
         skipped: false,
       };
-    }
-    if (playlist.entries[index]?.id !== old.id) reordered++;
-    if (JSON.stringify(old.reference) !== JSON.stringify(ref))
-      metadataChanged++;
-    return { ...old, reference: ref };
+    return {
+      ...old,
+      reference:
+        reference.unavailable && old.trackId
+          ? {
+              ...reference,
+              title: old.reference.title,
+              artist: old.reference.artist,
+              album: old.reference.album,
+              duration: old.reference.duration,
+            }
+          : reference,
+    };
   });
-  const removed = [...pools.values()].reduce((n, a) => n + a.length, 0);
-  const manual = playlist.entries.filter((e) => e.manual);
+  const removedEntries = [...pools.values()].flat(),
+    manual = playlist.entries.filter((entry) => entry.manual),
+    refreshedById = new Map(entries.map((entry) => [entry.id, entry]));
+  const finalEntries = playlist.followSourceOrder
+    ? [...entries, ...manual]
+    : [
+        ...playlist.entries
+          .filter((entry) => entry.manual || refreshedById.has(entry.id))
+          .map((entry) => refreshedById.get(entry.id) || entry),
+        ...entries.filter((entry) => !oldById.has(entry.id)),
+      ];
+  const afterOrdinals = new Map(
+    finalEntries.map((entry, index) => [entry.id, index + 1]),
+  );
+  const changes: RefreshChange[] = [];
+  const add = (
+    kind: RefreshChange["kind"],
+    entry: Occurrence,
+    before: Occurrence | null,
+  ) =>
+    changes.push({
+      kind,
+      occurrenceId: entry.id,
+      title: entry.reference.title,
+      artist: entry.reference.artist,
+      beforeOrdinal: oldById.get(entry.id)?.ordinal ?? null,
+      afterOrdinal: afterOrdinals.get(entry.id) ?? null,
+      before: before?.reference ?? null,
+      after: afterOrdinals.has(entry.id) ? entry.reference : null,
+      attachedTrackId: entry.trackId,
+    });
+  let added = 0,
+    reordered = 0,
+    metadataChanged = 0;
+  for (const entry of entries) {
+    const before = oldById.get(entry.id)?.entry;
+    if (!before) {
+      added++;
+      add("added", entry, null);
+    } else {
+      if (oldById.get(entry.id)!.ordinal !== afterOrdinals.get(entry.id)) {
+        reordered++;
+        add("reordered", entry, before);
+      }
+      if (
+        ["title", "artist", "album", "duration"].some(
+          (field) =>
+            before.reference[field as keyof Reference] !==
+            entry.reference[field as keyof Reference],
+        )
+      ) {
+        metadataChanged++;
+        add("metadata-changed", entry, before);
+      }
+    }
+    if (entry.reference.unavailable) add("unavailable", entry, before || null);
+  }
+  for (const entry of removedEntries) add("removed", entry, entry);
+  changes.sort(
+    (a, b) =>
+      (a.afterOrdinal ?? a.beforeOrdinal ?? 0) -
+      (b.afterOrdinal ?? b.beforeOrdinal ?? 0),
+  );
   return {
-    entries: playlist.followSourceOrder
-      ? [...entries, ...manual]
-      : [
-          ...playlist.entries
-            .filter(
-              (e) => manual.includes(e) || entries.some((n) => n.id === e.id),
-            )
-            .map((e) => entries.find((n) => n.id === e.id) || e),
-          ...entries.filter(
-            (e) => !playlist.entries.some((o) => o.id === e.id),
-          ),
-        ],
+    entries: finalEntries,
     added,
-    removed,
+    removed: removedEntries.length,
     reordered,
-    unavailable: references.filter((r) => r.unavailable).length,
+    unavailable: references.filter((reference) => reference.unavailable).length,
     metadataChanged,
+    changes,
   };
 }

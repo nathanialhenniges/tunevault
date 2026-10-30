@@ -12,6 +12,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import sharp from "sharp";
+import { parseFile } from "music-metadata";
 import { verifyTools, type ToolPaths } from "../../src/update/tools";
 import { run, inspect, writeMedia, artwork } from "../../src/core/media";
 import { LibraryService } from "../../src/core/library";
@@ -23,6 +24,38 @@ const toolsDir = path.resolve(
 );
 let tools: ToolPaths;
 const cleanups: (() => Promise<void>)[] = [];
+it("shutdown stops an active media subprocess and its child", async () => {
+  let ready!: (pids: number[]) => void;
+  const started = new Promise<number[]>((resolve) => {
+    ready = resolve;
+  });
+  const running = run(
+    process.execPath,
+    [
+      "-e",
+      `const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});console.log(JSON.stringify([process.pid,child.pid]));setInterval(()=>{},1000)`,
+    ],
+    undefined,
+    (line) => ready(JSON.parse(line)),
+  ).catch((error) => error);
+  const pids = await started;
+  await media.stopMediaTools();
+  expect(await running).toBeInstanceOf(Error);
+  await expect
+    .poll(
+      () =>
+        pids.every((pid) => {
+          try {
+            process.kill(pid, 0);
+            return false;
+          } catch {
+            return true;
+          }
+        }),
+      { timeout: 5000 },
+    )
+    .toBe(true);
+}, 15000);
 beforeAll(async () => {
   tools = await verifyTools(toolsDir);
 }, 180000);
@@ -85,6 +118,131 @@ async function complete(service: LibraryService, job: Job): Promise<Job> {
   throw new Error("Job did not complete");
 }
 describe("actual bundled media processing", () => {
+  it("preserves unmodelled tags and original-resolution embedded artwork across a tag edit", async () => {
+    const { root, service } = await fixture();
+    const tone = await audio(root);
+    const image = path.join(root, "original.png");
+    await sharp({
+      create: { width: 1200, height: 1200, channels: 3, background: "#aabbcc" },
+    })
+      .png()
+      .toFile(image);
+    const source = path.join(root, "complete.mp3");
+    await run(tools.ffmpeg, [
+      "-v",
+      "error",
+      "-i",
+      tone,
+      "-i",
+      image,
+      "-map",
+      "0:a",
+      "-map",
+      "1:v",
+      "-c",
+      "copy",
+      "-disposition:v",
+      "attached_pic",
+      "-metadata",
+      "lyrics=Owned synthetic lyrics",
+      "-metadata",
+      "replaygain_track_gain=-4.00 dB",
+      "-id3v2_version",
+      "3",
+      source,
+    ]);
+    const before = (await parseFile(source)).common;
+    expect(
+      (
+        await complete(
+          service,
+          (await service.dispatch("import.start", { paths: [source] })) as Job,
+        )
+      ).status,
+    ).toBe("completed");
+    let track = (await service.snapshot()).tracks[0];
+    expect(await readFile(track.artworkOriginal!)).toEqual(
+      await readFile(image),
+    );
+    expect((await sharp(track.artwork!).metadata()).width).toBe(600);
+    await service.dispatch("tracks.edit", {
+      ids: [track.id],
+      changes: { title: "Edited only title", date: "2026-10" },
+    });
+    track = (await service.snapshot()).tracks[0];
+    const after = (await parseFile(track.path)).common;
+    expect(after.lyrics).toEqual(before.lyrics);
+    expect(before.replaygain_track_gain).toBeDefined();
+    expect(after.replaygain_track_gain).toEqual(before.replaygain_track_gain);
+    expect((await inspect(track.path, tools)).metadata.date).toBe("2026-10");
+  }, 120000);
+  it.each(["aac", "aiff", "wav", "ogg", "opus", "webm"])(
+    "edits %s audio with artwork and preserves its codec",
+    async (extension) => {
+      const { root, service } = await fixture();
+      let source: string;
+      if (["ogg", "opus", "webm"].includes(extension)) {
+        source = path.join(root, `tone.${extension}`);
+        await copyFile(
+          path.resolve(`tests/fixtures/audio/tone.${extension}`),
+          source,
+        );
+      } else
+        source = await audio(
+          root,
+          `tone.${extension}`,
+          extension === "aac"
+            ? "aac"
+            : extension === "aiff"
+              ? "pcm_s16be"
+              : "pcm_s16le",
+        );
+      const job = await complete(
+        service,
+        (await service.dispatch("import.start", { paths: [source] })) as Job,
+      );
+      expect(job.status, job.message).toBe("completed");
+      let track = (await service.snapshot()).tracks[0];
+      const codec = track.codec;
+      const image = path.join(root, "cover.png");
+      await sharp({
+        create: { width: 64, height: 64, channels: 3, background: "#123abc" },
+      })
+        .png()
+        .toFile(image);
+      await service.dispatch("tracks.artwork", {
+        ids: [track.id],
+        path: image,
+        padding: true,
+      });
+      await service.dispatch("tracks.edit", {
+        ids: [track.id],
+        changes: {
+          title: "Edited synthetic",
+          artist: "AC/DC",
+          date: "20261029",
+          trackNumber: "007",
+        },
+      });
+      track = (await service.snapshot()).tracks[0];
+      const result = await inspect(track.path, tools);
+      expect(result.codec).toBe(codec);
+      expect(result.metadata).toMatchObject({
+        title: "Edited synthetic",
+        artist: "AC/DC",
+        date: "2026-10-29",
+        trackNumber: "7",
+      });
+      expect(
+        await media.embeddedArtwork(
+          track.path,
+          path.join(root, "decoded"),
+          tools,
+        ),
+      ).toBeTruthy();
+    },
+    120000,
+  );
   it("resumes durable queued imports after startup while interrupted work stays retryable", async () => {
     const { root, service } = await fixture();
     const file = await audio(root);
@@ -357,6 +515,120 @@ describe("actual bundled media processing", () => {
 });
 
 describe("recovery and incremental evidence", () => {
+  it("restores the automatic recovery bundle with prior undo history and leaves every original file intact", async () => {
+    const { root, service } = await fixture();
+    const original = await audio(root);
+    const originalBytes = await readFile(original);
+    expect(
+      (
+        await complete(
+          service,
+          (await service.dispatch("import.start", {
+            paths: [original],
+          })) as Job,
+        )
+      ).status,
+    ).toBe("completed");
+    const first = (await service.snapshot()).tracks[0];
+    const incoming = (await service.dispatch("backup", {
+      path: root,
+      includeMedia: false,
+    })) as { path: string };
+    await service.dispatch("tracks.edit", {
+      ids: [first.id],
+      changes: { title: "Before restore" },
+      locks: ["title"],
+    });
+    const second = (await service.snapshot()).tracks[0];
+    await service.dispatch("tracks.edit", {
+      ids: [first.id],
+      changes: { artist: "Recover this artist" },
+      locks: ["title", "artist"],
+    });
+    const third = (await service.snapshot()).tracks[0];
+    const files = new Map(
+      await Promise.all(
+        [first, second, third].map(
+          async (track) => [track.path, await readFile(track.path)] as const,
+        ),
+      ),
+    );
+    const restored = (await service.dispatch("restore", {
+      path: incoming.path,
+    })) as { recoveryBackup: string };
+    expect((await stat(restored.recoveryBackup)).isDirectory()).toBe(true);
+    const recovery = JSON.parse(
+      await readFile(path.join(restored.recoveryBackup, "bundle.json"), "utf8"),
+    );
+    expect(recovery.kind).toBe("metadata-only");
+    expect(recovery.snapshot).not.toHaveProperty("library");
+    expect(recovery.snapshot.tracks[0].metadata).toMatchObject({
+      title: "Before restore",
+      artist: "Recover this artist",
+    });
+    expect(recovery.revisions).toHaveLength(2);
+    await service.dispatch("restore", { path: restored.recoveryBackup });
+    expect((await service.snapshot()).tracks[0]).toMatchObject({
+      metadata: { title: "Before restore", artist: "Recover this artist" },
+      locks: ["title", "artist"],
+    });
+    await service.dispatch("tracks.undo", { ids: [first.id] });
+    expect((await service.snapshot()).tracks[0].metadata).toMatchObject({
+      title: "Before restore",
+      artist: first.metadata.artist,
+    });
+    await service.dispatch("tracks.undo", { ids: [first.id] });
+    expect((await service.snapshot()).tracks[0].metadata).toEqual(
+      first.metadata,
+    );
+    expect(await readFile(original)).toEqual(originalBytes);
+    for (const [file, bytes] of files)
+      expect(await readFile(file)).toEqual(bytes);
+  }, 60000);
+  it("rejects a backup while an earlier metadata edit is still writing", async () => {
+    const { root, service } = await fixture();
+    const original = await audio(root);
+    expect(
+      (
+        await complete(
+          service,
+          (await service.dispatch("import.start", {
+            paths: [original],
+          })) as Job,
+        )
+      ).status,
+    ).toBe("completed");
+    const track = (await service.snapshot()).tracks[0];
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const originalWriter = media.writeMedia;
+    vi.spyOn(media, "writeMedia").mockImplementationOnce(async (...args) => {
+      entered();
+      await gate;
+      return originalWriter(...args);
+    });
+    const edited = service.dispatch("tracks.edit", {
+      ids: [track.id],
+      changes: { title: "Protected write" },
+    });
+    try {
+      await started;
+      await expect(
+        service.dispatch("backup", { path: root, includeMedia: false }),
+      ).rejects.toThrow("write is in progress");
+    } finally {
+      release();
+      await edited;
+    }
+    expect((await service.snapshot()).tracks[0].metadata.title).toBe(
+      "Protected write",
+    );
+  }, 60000);
   it("restores full media plus revision undo while requiring target re-selection", async () => {
     const { root, service, destination } = await fixture();
     const file = await audio(root);
@@ -505,6 +777,7 @@ it("retains per-occurrence failures and retries only failed audio sources", asyn
           title: sourceId,
           artist: "Synthetic Fixture",
           description: "<script>inert source description</script>",
+          release_date: "20261029",
         });
       }
       expect(args[args.indexOf("--format") + 1]).toBe("bestaudio");
@@ -545,18 +818,51 @@ it("retains per-occurrence failures and retries only failed audio sources", asyn
   expect(snapshot.playlists[0].entries[1].error).toContain(
     "Fixture provider unavailable",
   );
+  const originalEntries = snapshot.playlists[0].entries;
+  expect(first.payload.destinationOccurrences).toEqual(
+    originalEntries.map((entry) => entry.id),
+  );
+  await service.dispatch("playlists.remove", {
+    id: snapshot.playlists[0].id,
+    occurrenceIds: [originalEntries[0].id],
+  });
+  const reordered = [
+    originalEntries[4].id,
+    originalEntries[1].id,
+    originalEntries[2].id,
+    originalEntries[3].id,
+  ];
+  await service.dispatch("playlists.reorder", {
+    id: snapshot.playlists[0].id,
+    occurrenceIds: reordered,
+  });
   await service.dispatch("jobs.retry", { id: queued.id });
   const retried = await complete(service, queued);
   expect(retried.status, retried.message).toBe("completed");
   snapshot = await service.snapshot();
   expect(snapshot.tracks).toHaveLength(3);
+  expect(snapshot.tracks.map((track) => track.metadata.date)).toEqual([
+    "2026-10-29",
+    "2026-10-29",
+    "2026-10-29",
+  ]);
   expect(snapshot.playlists[0].entries[1].error).toBeUndefined();
+  expect(snapshot.playlists[0].entries.map((entry) => entry.id)).toEqual(
+    reordered,
+  );
+  expect(
+    snapshot.playlists[0].entries.map((entry) =>
+      entry.trackId
+        ? snapshot.tracks.find((track) => track.id === entry.trackId)?.source
+            ?.id
+        : null,
+    ),
+  ).toEqual(["ccccccccccc", "bbbbbbbbbbb", "aaaaaaaaaaa", null]);
   expect(snapshot.playlists[0].entries.map((e) => Boolean(e.trackId))).toEqual([
     true,
     true,
     true,
     false,
-    true,
   ]);
   expect(downloads).toEqual({ aaaaaaaaaaa: 1, bbbbbbbbbbb: 1, ccccccccccc: 1 });
 }, 60000);

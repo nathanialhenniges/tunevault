@@ -1,4 +1,5 @@
 import { LibraryService } from "../core/library";
+import { stopMediaTools } from "../core/media";
 const port = process.parentPort;
 if (!port) throw new Error("Library must run in a utility process");
 let service: LibraryService;
@@ -11,6 +12,10 @@ port.on("message", async ({ data }: { data: any }) => {
         id,
         result: { node: process.versions.node, sqlite: true },
       });
+    } else if (action === "__shutdown") {
+      service?.close();
+      await stopMediaTools();
+      port.postMessage({ id, result: true });
     } else if (action === "__cookies") {
       service.setCookieFile(input?.path ?? null);
       service.resumeQueued();

@@ -15,6 +15,7 @@ import {
   parseChapters,
   parseDelimited,
   parseReferences,
+  spotifyPlaylists,
   reconcile,
 } from "../../src/core/references";
 import type { Playlist } from "../../src/shared/types";
@@ -325,4 +326,79 @@ it("metadata-only restore cannot grant access to media or artwork outside the se
     service.dispatch("backup", { path: root, includeMedia: true }),
   ).rejects.toThrow("relink missing");
   expect(await readFile(secret, "utf8")).toBe("DO NOT COPY");
+});
+
+it.each(["Apple", "Apple Computer"])(
+  "preserves plist strings and decodes numeric XML entities for %s exports",
+  (publisher) => {
+    const xml = `<?xml version="1.0"?><!DOCTYPE plist PUBLIC "-//${publisher}//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist><dict><key>Tracks</key><dict><key>001</key><dict><key>Name</key><string>007</string><key>Artist</key><string>&#x5B64;&#29436; &amp; Co</string><key>Album</key><string>002</string><key>Total Time</key><integer>184000</integer></dict></dict><key>Playlists</key><array><dict><key>Playlist Items</key><array><dict><key>Track ID</key><integer>001</integer></dict></array></dict></array></dict></plist>`;
+    expect(
+      parseReferences(xml.replaceAll("><", ">\n  <"), "apple-xml"),
+    ).toEqual([
+      {
+        title: "007",
+        artist: "孤狼 & Co",
+        album: "002",
+        duration: 184,
+        unavailable: false,
+      },
+    ]);
+    for (const doctype of [
+      '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://evil.test/dtd">',
+      '<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd" [<!ENTITY x "bad">]>',
+    ])
+      expect(() => parseReferences(doctype + "<plist/>", "apple-xml")).toThrow(
+        "entities",
+      );
+  },
+);
+it("maps Apple Music Time TSV duration while preserving text numerals", () => {
+  expect(
+    parseReferences("Name\tArtist\tAlbum\tTime\n007\t孤狼\t002\t03:04", "tsv"),
+  ).toEqual([
+    {
+      title: "007",
+      artist: "孤狼",
+      album: "002",
+      duration: 184,
+      url: undefined,
+    },
+  ]);
+});
+it("selects only one playlist from a multiple-playlist Spotify export", () => {
+  const data = JSON.stringify({
+    privateAccountField: "must not be imported",
+    playlists: [
+      {
+        name: "First",
+        items: [
+          {
+            track: { trackName: "A", artistName: "One", albumName: "Album A" },
+          },
+        ],
+      },
+      {
+        name: "Second",
+        items: [
+          {
+            track: { trackName: "B", artistName: "Two", albumName: "Album B" },
+          },
+          {
+            track: { trackName: "B", artistName: "Two", albumName: "Album B" },
+          },
+        ],
+      },
+    ],
+  });
+  expect(spotifyPlaylists(data)).toEqual([
+    { index: 0, name: "First", count: 1 },
+    { index: 1, name: "Second", count: 2 },
+  ]);
+  expect(() => parseReferences(data, "spotify-json")).toThrow("Choose one");
+  const references = parseReferences(data, "spotify-json", 1);
+  expect(references.map((reference) => reference.title)).toEqual(["B", "B"]);
+  expect(JSON.stringify(references)).not.toContain("must not be imported");
+  expect(() => parseReferences(data, "spotify-json", 2)).toThrow(
+    "Invalid Spotify playlist selection",
+  );
 });

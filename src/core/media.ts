@@ -3,9 +3,12 @@ import {
   ReadStyle,
   TagTypes,
   Id3v2Tag,
+  Picture,
+  Id3v2FrameIdentifiers,
+  Id3v2UserTextInformationFrame,
 } from "node-taglib-sharp";
 import { spawn } from "node:child_process";
-import { stat, mkdir, rm } from "node:fs/promises";
+import { stat, mkdir, rm, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
@@ -32,8 +35,28 @@ export const fields = [
 export function blankMetadata(): Metadata {
   return Object.fromEntries(fields.map((x) => [x, ""])) as Metadata;
 }
+export function normalizeMetadata(metadata: Metadata): Metadata {
+  const value = { ...metadata };
+  if (/^\d{8}$/.test(value.date))
+    value.date = value.date.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+  for (const field of [
+    "trackNumber",
+    "trackTotal",
+    "discNumber",
+    "discTotal",
+  ] as const)
+    if (/^\d+$/.test(value[field]))
+      value[field] = Number(value[field]) ? String(Number(value[field])) : "";
+  return value;
+}
 export interface ToolPaths {
   [name: string]: string;
+}
+const activeTools = new Set<{ abort: () => void; closed: Promise<void> }>();
+export async function stopMediaTools() {
+  const tools = [...activeTools];
+  for (const tool of tools) tool.abort();
+  await Promise.all(tools.map((tool) => tool.closed));
 }
 export async function run(
   executable: string,
@@ -47,7 +70,11 @@ export async function run(
       shell: false,
       windowsHide: true,
       detached: process.platform !== "win32",
-      env: { ...process.env, PATH: path.dirname(executable) },
+      env: {
+        ...process.env,
+        PATH: path.dirname(executable),
+        PYTHONIOENCODING: "utf-8",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
     const decoder = new StringDecoder("utf8");
@@ -75,6 +102,22 @@ export async function run(
         }
       }
     };
+    let closed!: () => void;
+    const active = {
+      abort,
+      closed: new Promise<void>((resolve) => {
+        closed = resolve;
+      }),
+    };
+    activeTools.add(active);
+    if (child.pid)
+      process.parentPort?.postMessage({ toolPid: child.pid, started: true });
+    child.once("close", () => {
+      activeTools.delete(active);
+      if (child.pid)
+        process.parentPort?.postMessage({ toolPid: child.pid, started: false });
+      closed();
+    });
     const timeout = setTimeout(
       () => {
         abort();
@@ -163,6 +206,15 @@ export async function inspect(
   );
   const audio = probe.streams?.find((s: any) => s.codec_type === "audio");
   if (
+    probe.streams?.some(
+      (stream: any) =>
+        stream.codec_type === "video" && !stream.disposition?.attached_pic,
+    )
+  )
+    throw new Error(
+      "Only audio files are supported; video media cannot be imported",
+    );
+  if (
     !audio ||
     !Number.isFinite(Number(probe.format.duration)) ||
     Number(probe.format.duration) <= 0
@@ -184,17 +236,23 @@ export async function inspect(
   );
   const tags = await parseFile(file, { duration: false, skipCovers: true });
   const c = tags.common;
+  // ID3v2.3 uses slash separators; retain the literal credit for names such as AC/DC.
+  const id3Text = (id: string) =>
+    tags.native["ID3v2.3"]
+      ?.filter((tag) => tag.id === id)
+      .map((tag) => String(tag.value))
+      .join("/");
   const metadata = blankMetadata();
   Object.assign(metadata, {
     title: c.title || "",
-    artist: c.artists?.join("; ") || c.artist || "",
+    artist: id3Text("TPE1") || c.artist || c.artists?.join("; ") || "",
     album: c.album || "",
-    albumArtist: c.albumartist || "",
+    albumArtist: id3Text("TPE2") || c.albumartist || "",
     trackNumber: String(c.track?.no || ""),
     trackTotal: String(c.track?.of || ""),
     discNumber: String(c.disk?.no || ""),
     discTotal: String(c.disk?.of || ""),
-    date: c.date || String(c.year || ""),
+    date: id3Text("TXXX:TUNEVAULT_DATE") || c.date || String(c.year || ""),
     genre: c.genre?.join("; ") || "",
     composer: c.composer?.join("; ") || "",
     comment: c.comment?.map((x) => x.text).join("\n") || "",
@@ -256,6 +314,7 @@ export async function embeddedArtwork(
   file: string,
   directory: string,
   tools: ToolPaths,
+  original?: string,
 ): Promise<string | null> {
   const raw = path.join(directory, `${randomUUID()}.jpg`);
   try {
@@ -269,8 +328,15 @@ export async function embeddedArtwork(
       "0:v:0",
       "-frames:v",
       "1",
+      "-c:v",
+      "copy",
+      "-f",
+      "image2",
       raw,
     ]);
+    if ((await stat(raw)).size > 20 * 1024 * 1024)
+      throw new Error("Embedded artwork exceeds 20 MB");
+    if (original) await copyFile(raw, original);
     return await artwork(raw, directory);
   } catch {
     return null;
@@ -298,13 +364,16 @@ export async function writeMedia(
 ): Promise<void> {
   const { profile, signal, range } = options;
   const ext = path.extname(destination).toLowerCase();
+  const metadata = normalizeMetadata(track.metadata);
+  const muxedPicture =
+    !!track.artwork && [".mp3", ".m4a", ".flac"].includes(ext);
   const args = ["-v", "error", "-nostdin"];
   if (range) args.push("-ss", String(range[0]));
   args.push("-i", track.path);
-  if (track.artwork) args.push("-i", track.artwork);
+  if (muxedPicture) args.push("-i", track.artwork!);
   args.push("-map", "0:a:0");
-  if (track.artwork) args.push("-map", "1:v:0");
-  args.push("-map_metadata", "-1");
+  if (muxedPicture) args.push("-map", "1:v:0");
+  args.push("-map_metadata", "0");
   const codec = profile?.format || "original";
   if (
     codec === "original" ||
@@ -324,7 +393,7 @@ export async function writeMedia(
     if (profile?.sampleRate) args.push("-ar", String(profile.sampleRate));
   }
   if (range) args.push("-t", String(range[1] - range[0]));
-  if (track.artwork)
+  if (muxedPicture)
     args.push(
       "-c:v",
       "mjpeg",
@@ -342,25 +411,61 @@ export async function writeMedia(
       (field === "comment" && [".mp3", ".m4a", ".flac"].includes(ext))
     )
       continue;
-    let val = track.metadata[field];
-    if (field === "trackNumber" && track.metadata.trackTotal)
-      val += `/${track.metadata.trackTotal}`;
-    if (field === "discNumber" && track.metadata.discTotal)
-      val += `/${track.metadata.discTotal}`;
-    if (val) args.push("-metadata", `${tagNames[field] || field}=${val}`);
+    let val = metadata[field];
+    if (field === "trackNumber" && metadata.trackTotal)
+      val += `/${metadata.trackTotal}`;
+    if (field === "discNumber" && metadata.discTotal)
+      val += `/${metadata.discTotal}`;
+    args.push("-metadata", `${tagNames[field] || field}=${val}`);
+    args.push("-metadata:s:a:0", `${tagNames[field] || field}=${val}`);
   }
   if (ext === ".mp3") args.push("-id3v2_version", "3", "-write_id3v1", "0");
   if (ext === ".m4a") args.push("-movflags", "+faststart");
   args.push("-y", destination);
   await run(tools.ffmpeg, args, signal);
-  if ([".mp3", ".m4a", ".flac"].includes(ext)) {
+  {
     const file = TagFile.createFromPath(destination, undefined, ReadStyle.None);
     try {
+      file.tag.title = metadata.title;
+      file.tag.performers = metadata.artist ? [metadata.artist] : [];
+      file.tag.album = metadata.album;
+      file.tag.albumArtists = metadata.albumArtist
+        ? [metadata.albumArtist]
+        : [];
+      file.tag.composers = metadata.composer ? [metadata.composer] : [];
+      file.tag.genres = metadata.genre ? [metadata.genre] : [];
+      file.tag.track = Number(metadata.trackNumber) || 0;
+      file.tag.trackCount = Number(metadata.trackTotal) || 0;
+      file.tag.disc = Number(metadata.discNumber) || 0;
+      file.tag.discCount = Number(metadata.discTotal) || 0;
       file.tag.comment = track.metadata.comment;
       file.tag.isrc = track.metadata.isrc;
       file.tag.musicBrainzTrackId = track.metadata.musicbrainzId;
-      if (ext === ".mp3") {
-        (file.getTag(TagTypes.Id3v2, true) as Id3v2Tag).version = 3;
+      if (track.artwork && !muxedPicture)
+        file.tag.pictures = [Picture.fromPath(track.artwork)];
+      if ([".mp3", ".wav", ".aiff", ".aif", ".aac"].includes(ext)) {
+        const tag = file.getTag(TagTypes.Id3v2, true) as Id3v2Tag;
+        tag.version = 3;
+        tag.setTextFrame(Id3v2FrameIdentifiers.TYER, metadata.date.slice(0, 4));
+        tag.setTextFrame(
+          Id3v2FrameIdentifiers.TDAT,
+          /^\d{4}-\d{2}-\d{2}$/.test(metadata.date)
+            ? metadata.date.slice(8, 10) + metadata.date.slice(5, 7)
+            : "",
+        );
+        for (const frame of tag.frames)
+          if (
+            frame instanceof Id3v2UserTextInformationFrame &&
+            frame.description === "TUNEVAULT_DATE"
+          )
+            tag.removeFrame(frame);
+        // ID3v2.3 cannot express month-only precision in its standard date frames.
+        if (/^\d{4}-\d{2}$/.test(metadata.date)) {
+          const date =
+            Id3v2UserTextInformationFrame.fromDescription("TUNEVAULT_DATE");
+          date.text = [metadata.date];
+          tag.addFrame(date);
+        }
         file.removeTags(TagTypes.Id3v1);
       }
       file.save();
@@ -375,7 +480,7 @@ export async function writeMedia(
   )
     throw new Error("Written audio failed duration verification");
   for (const field of fields) {
-    if (result.metadata[field] !== track.metadata[field])
+    if (normalizeMetadata(result.metadata)[field] !== metadata[field])
       throw new Error(
         `Written ${field} did not pass independent tag verification`,
       );
@@ -389,7 +494,13 @@ export async function writeMedia(
 }
 export function extension(track: Track, format: string): string {
   return format === "original"
-    ? path.extname(track.path)
+    ? track.codec === "opus"
+      ? ".opus"
+      : track.codec === "vorbis"
+        ? ".ogg"
+        : track.codec === "aac"
+          ? ".m4a"
+          : path.extname(track.path)
     : format === "aac" || format === "alac"
       ? ".m4a"
       : `.${format}`;

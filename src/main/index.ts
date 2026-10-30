@@ -17,10 +17,27 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { release } from "node:os";
+import { spawn } from "node:child_process";
 import { UpdateService } from "../update/service";
 import { updateOptions } from "../update/config";
 import { Credentials } from "./credentials";
 import { FileGrants } from "./permissions";
+
+const toolPids = new Set<number>();
+function stopTool(pid: number) {
+  if (process.platform === "win32")
+    spawn(
+      join(process.env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
+      ["/PID", String(pid), "/T", "/F"],
+      { windowsHide: true },
+    ).on("error", () => {});
+  else
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      /* Already exited. */
+    }
+}
 
 if (process.env.TUNEVAULT_TEST_DATA) {
   if (!app.isPackaged || process.env.TUNEVAULT_E2E === "1")
@@ -176,6 +193,11 @@ app
       serviceName: "TuneVault library",
     });
     worker.on("message", (message: any) => {
+      if (Number.isSafeInteger(message.toolPid) && message.toolPid > 0) {
+        if (message.started) toolPids.add(message.toolPid);
+        else toolPids.delete(message.toolPid);
+        return;
+      }
       if (message.changed) {
         window?.webContents.send("tunevault:changed");
         return;
@@ -188,6 +210,8 @@ app
       else request.resolve(message.result);
     });
     worker.on("exit", () => {
+      for (const pid of toolPids) stopTool(pid);
+      toolPids.clear();
       for (const request of pending.values()) {
         clearTimeout(request.timeout);
         request.reject(
@@ -525,6 +549,7 @@ app
           return credentials!.status();
         }
         if (action.startsWith("updates.")) {
+          if (action === "updates.status") return updates.status();
           const state = await command("snapshot");
           jobsActive = state.jobs.some((job: any) =>
             ["queued", "running"].includes(job.status),
@@ -592,11 +617,12 @@ app
             ? snapshot.tracks.find((x: any) => x.id === input.trackId)?.path
             : input?.targetId
               ? input.batchId
-                ? snapshot.receipts.find(
-                    (x: any) =>
-                      x.targetId === input.targetId &&
-                      x.batchId === input.batchId,
-                  )?.path
+                ? snapshot.jobs.find(
+                    (job: any) =>
+                      job.kind === "export" &&
+                      job.payload.targetId === input.targetId &&
+                      job.payload.batchId === input.batchId,
+                  )?.payload.path
                 : snapshot.targets.find((x: any) => x.id === input.targetId)
                     ?.destination
               : input?.path;
@@ -604,6 +630,9 @@ app
             ...snapshot.tracks.map((x: any) => x.path),
             ...snapshot.receipts.map((x: any) => x.path),
             ...snapshot.targets.map((x: any) => x.destination),
+            ...snapshot.jobs
+              .filter((job: any) => job.kind === "export")
+              .map((job: any) => job.payload.path),
             snapshot.settings.vault,
           ];
           if (!path || !paths.includes(path))
@@ -733,7 +762,10 @@ app
         jobsActive = state.jobs.some((j: any) =>
           ["running", "queued"].includes(j.status),
         );
-        if (state.settings.autoUpdates && !jobsActive) await updates.check();
+        if (state.settings.autoUpdates && !jobsActive) {
+          await updates.check();
+          window?.webContents.send("tunevault:changed");
+        }
       } catch {
         /* Offline/update errors do not interrupt library use. */
       }
@@ -752,11 +784,37 @@ app.on("second-instance", () => {
   window?.focus();
 });
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", () => {
-  try {
-    credentials?.clearSessionSync();
-  } catch {
-    console.warn("Temporary credential cleanup will retry on next launch");
-  }
-  worker?.kill();
+let quitting = false;
+app.on("before-quit", (event) => {
+  if (quitting) return;
+  quitting = true;
+  event.preventDefault();
+  void (async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (worker)
+        await Promise.race([
+          command("__shutdown"),
+          new Promise((_resolve, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Shutdown timeout")),
+              5000,
+            );
+          }),
+        ]);
+    } catch {
+      /* Forced cleanup also covers an unresponsive utility process. */
+    } finally {
+      clearTimeout(timer);
+      for (const pid of toolPids) stopTool(pid);
+      toolPids.clear();
+      try {
+        credentials?.clearSessionSync();
+      } catch {
+        console.warn("Temporary credential cleanup will retry on next launch");
+      }
+      worker?.kill();
+      app.quit();
+    }
+  })();
 });

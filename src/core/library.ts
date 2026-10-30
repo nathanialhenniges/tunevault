@@ -53,6 +53,7 @@ import {
   run,
   writeMedia,
   extension,
+  normalizeMetadata,
   type ToolPaths,
 } from "./media";
 import {
@@ -94,6 +95,7 @@ export class LibraryService {
   private running = new Map<string, AbortController>();
   private pumping = false;
   private closed = false;
+  private indexWrite = false;
   private lookupAt = 0;
   private cookieFile: string | null = null;
   setCookieFile(file: string | null) {
@@ -111,33 +113,83 @@ export class LibraryService {
     this.dataDir = options.dataDir;
     this.toolsDir = options.toolsDir;
     mkdirSync(this.dataDir, { recursive: true });
-    this.db = new DatabaseSync(path.join(this.dataDir, "library.sqlite"));
-    this.db.exec(
-      "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;",
-    );
-    const version = Number(
-      (this.db.prepare("PRAGMA user_version").get() as any).user_version,
-    );
-    if (version > 1)
-      throw new Error("Library was created by a newer TuneVault version");
-    if (version === 0) {
-      this.db.exec("BEGIN");
-      try {
-        for (const table of tables)
-          this.db.exec(
-            `CREATE TABLE ${table} (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)))`,
+    const databasePath = path.join(this.dataDir, "library.sqlite"),
+      existingDatabase = existsSync(databasePath);
+    this.db = new DatabaseSync(databasePath);
+    try {
+      this.db.exec("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
+      const version = Number(
+        (
+          this.db.prepare("PRAGMA user_version").get() as {
+            user_version: number;
+          }
+        ).user_version,
+      );
+      if (version > 2)
+        throw new Error("Library was created by a newer TuneVault version");
+      const healthy = (database: DatabaseSync) =>
+        database
+          .prepare("PRAGMA quick_check")
+          .all()
+          .every((row) =>
+            Object.values(row).every((result) => result === "ok"),
           );
-        this.db.exec(
-          "CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL CHECK(json_valid(data))); PRAGMA user_version=1; COMMIT",
+      if (!healthy(this.db))
+        throw new Error(
+          "SQLite integrity check failed; the existing library has not been migrated",
         );
-      } catch (error) {
-        this.db.exec("ROLLBACK");
-        throw error;
+      if (existingDatabase && version < 2) {
+        const backupPath = path.join(
+          this.dataDir,
+          `before-schema-${version}-to-2-${Date.now()}-${randomUUID()}.sqlite`,
+        );
+        this.db.prepare("VACUUM INTO ?").run(backupPath);
+        const backup = new DatabaseSync(backupPath, { readOnly: true });
+        try {
+          if (!healthy(backup))
+            throw new Error(
+              "Pre-migration backup failed SQLite integrity verification",
+            );
+        } finally {
+          backup.close();
+        }
       }
+      if (version < 2) {
+        this.db.exec("BEGIN IMMEDIATE");
+        try {
+          if (version < 1) {
+            for (const table of tables)
+              this.db.exec(
+                `CREATE TABLE ${table} (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL CHECK(json_valid(data)))`,
+              );
+            this.db.exec(
+              "CREATE TABLE settings (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL CHECK(json_valid(data))); PRAGMA user_version=1;",
+            );
+          }
+          if (version < 2) {
+            this.db.exec(
+              "DROP TABLE IF EXISTS playlist_occurrences; DROP TABLE IF EXISTS receipt_links; CREATE TABLE playlist_occurrences (id TEXT PRIMARY KEY NOT NULL CHECK(length(id)>0), playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, track_id TEXT REFERENCES tracks(id), ordinal INTEGER NOT NULL CHECK(ordinal>=0), UNIQUE(playlist_id,ordinal)); CREATE TABLE receipt_links (receipt_id TEXT PRIMARY KEY NOT NULL REFERENCES receipts(id) ON DELETE CASCADE, track_id TEXT NOT NULL REFERENCES tracks(id), target_id TEXT NOT NULL REFERENCES targets(id));",
+            );
+            this.db.exec(
+              "INSERT INTO playlist_occurrences(id,playlist_id,track_id,ordinal) SELECT json_extract(entry.value,'$.id'),playlist.id,json_extract(entry.value,'$.trackId'),CAST(entry.key AS INTEGER) FROM playlists playlist, json_each(playlist.data,'$.entries') entry; INSERT INTO receipt_links(receipt_id,track_id,target_id) SELECT id,json_extract(data,'$.trackId'),json_extract(data,'$.targetId') FROM receipts; PRAGMA user_version=2;",
+            );
+          }
+          if (
+            !healthy(this.db) ||
+            this.db.prepare("PRAGMA foreign_key_check").all().length
+          )
+            throw new Error("Migrated library failed integrity verification");
+          this.db.exec("COMMIT");
+        } catch (error) {
+          this.db.exec("ROLLBACK");
+          throw error;
+        }
+      }
+      this.db.exec("PRAGMA journal_mode=WAL;");
+    } catch (error) {
+      this.db.close();
+      throw error;
     }
-    this.db.exec(
-      "CREATE TABLE IF NOT EXISTS playlist_occurrences (id TEXT PRIMARY KEY, playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE, track_id TEXT REFERENCES tracks(id), ordinal INTEGER NOT NULL CHECK(ordinal>=0), UNIQUE(playlist_id,ordinal)); CREATE TABLE IF NOT EXISTS receipt_links (receipt_id TEXT PRIMARY KEY REFERENCES receipts(id) ON DELETE CASCADE, track_id TEXT NOT NULL REFERENCES tracks(id), target_id TEXT NOT NULL REFERENCES targets(id));",
-    );
     for (const job of this.all<Job>("jobs"))
       if (job.status === "running")
         this.save("jobs", {
@@ -239,13 +291,96 @@ export class LibraryService {
       )
       .run(JSON.stringify(value));
   }
+  private async repointVault(
+    settings: Settings,
+    updates: Record<string, unknown>,
+    vault: string,
+  ): Promise<Settings> {
+    if (
+      this.running.size ||
+      this.all<Job>("jobs").some((job) =>
+        ["queued", "running"].includes(job.status),
+      )
+    )
+      throw new Error(
+        "Wait for queued and active media jobs before locating a moved vault",
+      );
+    const tracks = this.all<Track>("tracks"),
+      revisions = this.all<{ id: string; trackId: string; track: Track }>(
+        "revisions",
+      );
+    const previousRoot = path.resolve(settings.vault),
+      verified = new Map<string, { path: string; hash: string }>();
+    const relocated = async (file: string, hash?: string): Promise<string> => {
+      if (!path.isAbsolute(file))
+        throw new Error("Stored vault path is invalid");
+      const relative = path.relative(previousRoot, file);
+      if (
+        !relative ||
+        relative.split(path.sep).includes("..") ||
+        path.isAbsolute(relative)
+      )
+        throw new Error("Stored media/artwork is outside the previous vault");
+      const destination = await confined(vault, relative);
+      const info = await stat(destination);
+      if (!info.isFile())
+        throw new Error("A moved media/artwork file is missing");
+      const cached = verified.get(destination);
+      const actual = cached?.hash || (await hashFile(destination));
+      if (hash && actual !== hash)
+        throw new Error(
+          "Moved vault media/revision hash mismatch; library paths and settings are unchanged",
+        );
+      if (!hash) {
+        if (info.size > 20 * 1024 * 1024)
+          throw new Error("Moved artwork exceeds its size limit");
+        const image = await sharp(destination, {
+          limitInputPixels: 40000000,
+        }).metadata();
+        if (
+          !["jpeg", "png", "webp"].includes(image.format || "") ||
+          !image.width ||
+          !image.height ||
+          image.width * image.height > 40000000
+        )
+          throw new Error("Moved artwork is invalid");
+      }
+      verified.set(destination, { path: destination, hash: actual });
+      return destination;
+    };
+    for (const track of [
+      ...tracks,
+      ...revisions.map((revision) => revision.track),
+    ]) {
+      track.path = await relocated(track.path, track.hash);
+      if (track.artwork) track.artwork = await relocated(track.artwork);
+      if (track.artworkOriginal)
+        track.artworkOriginal = await relocated(track.artworkOriginal);
+      track.missing = false;
+    }
+    for (const record of verified.values())
+      if ((await hashFile(record.path)) !== record.hash)
+        throw new Error(
+          "Moved vault changed during verification; settings are unchanged",
+        );
+    const next: Settings = { ...settings, ...updates, vault };
+    this.transaction(() => {
+      for (const track of tracks) this.save("tracks", track);
+      for (const revision of revisions) this.save("revisions", revision);
+      this.saveSettings(next);
+    });
+    return next;
+  }
   private tools() {
     return (this.toolsPromise ??= verifyTools(
       this.toolsDir,
       process.platform,
       process.arch,
       this.toolsAbort.signal,
-    ));
+    ).catch((error) => {
+      this.toolsPromise = null;
+      throw error;
+    }));
   }
   async snapshot(): Promise<Snapshot> {
     const tracks = this.all<Track>("tracks");
@@ -264,6 +399,50 @@ export class LibraryService {
     };
   }
   async dispatch(action: string, input: unknown = {}): Promise<unknown> {
+    if (
+      [
+        "snapshot",
+        "artwork.get",
+        "diagnostics",
+        "import.preview",
+        "export.preview",
+        "source.preview",
+        "source.search",
+        "lookup.search",
+        "lookup.artworkPreview",
+        "mixes.parse",
+        "playlists.refreshPreview",
+        "artwork.preview",
+        "jobs.cancel",
+      ].includes(action)
+    )
+      return this.dispatchCommand(action, input);
+    if (this.indexWrite)
+      throw new Error(
+        "A library write is in progress; wait for it to finish before changing the library",
+      );
+    if (
+      ["backup", "restore"].includes(action) &&
+      (this.running.size ||
+        this.all<Job>("jobs").some((job) =>
+          ["queued", "running"].includes(job.status),
+        ))
+    )
+      throw new Error(
+        "Wait for queued and active media jobs before backing up or restoring",
+      );
+    this.indexWrite = true;
+    try {
+      return await this.dispatchCommand(action, input);
+    } finally {
+      this.indexWrite = false;
+      void this.pump();
+    }
+  }
+  private async dispatchCommand(
+    action: string,
+    input: unknown,
+  ): Promise<unknown> {
     const data = object(input ?? {});
     switch (action) {
       case "snapshot":
@@ -331,9 +510,7 @@ export class LibraryService {
             settings.vault !== vault &&
             this.all("tracks").length
           )
-            throw new Error(
-              "Existing library has media in its current vault. Back up and relocate files explicitly before changing it.",
-            );
+            return this.repointVault(settings, data, vault);
           data.vault = vault;
         }
         this.saveSettings({ ...settings, ...data });
@@ -692,14 +869,16 @@ export class LibraryService {
           throw new Error("No prepared batch for this target");
         for (const receipt of receipts) {
           if (receipt.playlistRevision.includes(":")) {
-            const [playlistId, revision] = receipt.playlistRevision.split(":");
-            if (
-              this.get<Playlist>("playlists", playlistId).revision !==
-              Number(revision)
-            )
-              throw new Error(
-                "Playlist order changed; prepare a new batch before confirming",
-              );
+            for (const component of receipt.playlistRevision.split("|")) {
+              const [playlistId, revision] = component.split(":");
+              if (
+                this.get<Playlist>("playlists", playlistId).revision !==
+                Number(revision)
+              )
+                throw new Error(
+                  "Playlist order changed; prepare a new batch before confirming",
+                );
+            }
           }
           const track = this.get<Track>("tracks", receipt.trackId);
           if (
@@ -870,7 +1049,7 @@ export class LibraryService {
             tracks: this.all("tracks").length,
             jobs: this.all("jobs").length,
           },
-          database: "SQLite schema 1",
+          database: "SQLite schema 2",
         };
       }
       default:
@@ -915,17 +1094,15 @@ export class LibraryService {
   private async collect(input: string[]): Promise<string[]> {
     const files: string[] = [];
     const walk = async (file: string) => {
+      if (path.basename(file).startsWith(".")) return;
       if (files.length >= 10000)
         throw new Error("Select at most 10,000 media files per import");
       const info = await lstat(file);
-      if (info.isSymbolicLink())
-        throw new Error(
-          "Symlinks are not imported; select the actual media folder",
-        );
+      if (info.isSymbolicLink()) return;
       if (info.isDirectory()) {
         for (const item of await readdir(file))
           await walk(path.join(file, item));
-      } else if (/\.(mp3|m4a|aac|flac|wav|aiff|aif|ogg|opus)$/i.test(file))
+      } else if (/\.(mp3|m4a|aac|flac|wav|aiff|aif|ogg|opus|webm)$/i.test(file))
         files.push(await realpath(file));
     };
     for (const file of input) await walk(text(file, 4000));
@@ -1010,7 +1187,7 @@ export class LibraryService {
       );
       const updated: Track = {
         ...track,
-        metadata: { ...track.metadata, ...allowed },
+        metadata: normalizeMetadata({ ...track.metadata, ...allowed }),
         locks: addLocks
           ? [...new Set([...track.locks, ...addLocks])]
           : (locks ?? track.locks),
@@ -1024,7 +1201,7 @@ export class LibraryService {
       };
       const dest = await confined(
         this.requireVault(),
-        `revisions/${track.id}/${updated.revision}-${randomUUID()}${path.extname(track.path)}`,
+        `revisions/${track.id}/${updated.revision}-${randomUUID()}${extension(track, "original")}`,
       );
       await mkdir(path.dirname(dest), { recursive: true });
       try {
@@ -1074,12 +1251,12 @@ export class LibraryService {
     this.save("jobs", { ...job, ...changes, updatedAt: now() });
   }
   private async pump() {
-    if (this.pumping || this.closed) return;
+    if (this.pumping || this.closed || this.indexWrite) return;
     this.pumping = true;
     try {
       for (;;) {
         const job = this.all<Job>("jobs").find((j) => j.status === "queued");
-        if (!job || this.closed) break;
+        if (!job || this.closed || this.indexWrite) break;
         const controller = new AbortController();
         this.running.set(job.id, controller);
         this.updateJob(job.id, {
@@ -1117,63 +1294,88 @@ export class LibraryService {
     }
   }
   private async importJob(job: Job, signal: AbortSignal) {
-    const files = this.paths(job.payload.paths),
+    const previousFailures = job.payload.failures as
+      { path: string; error: string }[] | undefined;
+    const files = this.paths(
+        previousFailures?.length
+          ? previousFailures.map((failure) => failure.path)
+          : job.payload.paths,
+      ),
       tools = await this.tools();
+    const failures: { path: string; error: string }[] = [];
     for (let i = 0; i < files.length; i++) {
       signal.throwIfAborted();
       const source = files[i];
-      const info = await inspect(source, tools, signal);
-      if (
-        !this.all<Track>("tracks").some(
-          (t) =>
-            t.hash === info.hash ||
-            (t.source?.provider === "local" && t.source.id === info.hash),
-        )
-      ) {
-        const id = randomUUID(),
-          dest = await this.archiveCopy(source, id, path.extname(source));
-        const image = await embeddedArtwork(
-          dest,
-          path.join(this.requireVault(), "artwork"),
-          tools,
-        );
-        const track: Track = {
-          ...info,
-          id,
-          path: dest,
-          originalPath: source,
-          revision: 1,
-          artwork: image,
-          favorite: false,
-          missing: false,
-          source: {
-            provider: "local",
-            id: info.hash,
-            url: "",
-            title: info.metadata.title,
-            uploader: "",
-            description: "",
-            acquiredAt: now(),
-            quality: ["flac", "alac", "pcm_s16le", "pcm_s24le"].includes(
-              info.codec,
-            )
-              ? "Lossless source"
-              : "Lossy source",
-            chapters: [],
-          },
-        };
-        this.save("tracks", track);
+      try {
+        const info = await inspect(source, tools, signal);
+        if (
+          !this.all<Track>("tracks").some(
+            (t) =>
+              t.hash === info.hash ||
+              (t.source?.provider === "local" && t.source.id === info.hash),
+          )
+        ) {
+          const id = randomUUID(),
+            dest = await this.archiveCopy(source, id, path.extname(source));
+          const originalArt = await confined(
+            this.requireVault(),
+            `artwork/embedded-original-${id}.image`,
+          );
+          const image = await embeddedArtwork(
+            dest,
+            path.join(this.requireVault(), "artwork"),
+            tools,
+            originalArt,
+          );
+          const track: Track = {
+            ...info,
+            id,
+            path: dest,
+            originalPath: source,
+            revision: 1,
+            artwork: image,
+            artworkOriginal: image ? originalArt : undefined,
+            favorite: false,
+            missing: false,
+            source: {
+              provider: "local",
+              id: info.hash,
+              url: "",
+              title: info.metadata.title,
+              uploader: "",
+              description: "",
+              acquiredAt: now(),
+              quality: ["flac", "alac", "pcm_s16le", "pcm_s24le"].includes(
+                info.codec,
+              )
+                ? "Lossless source"
+                : "Lossy source",
+              chapters: [],
+            },
+          };
+          this.save("tracks", track);
+        }
+      } catch (error) {
+        signal.throwIfAborted();
+        failures.push({ path: source, error: message(error) });
       }
       this.updateJob(job.id, {
+        payload: { ...job.payload, failures },
         progress: (i + 1) / files.length,
-        message: `Imported ${i + 1} of ${files.length}`,
+        message: `Processed ${i + 1} of ${files.length}; ${failures.length} failed`,
       });
     }
+    if (failures.length)
+      throw new Error(
+        `${files.length - failures.length} imported or already present; ${failures.length} failed. Retry processes only failed files.`,
+      );
   }
   private ytArgs(tools: ToolPaths): string[] {
     return [
       ...(this.cookieFile ? ["--cookies", this.cookieFile] : []),
       "--ignore-config",
+      "--encoding",
+      "utf-8",
       "--no-plugin-dirs",
       "--no-remote-components",
       "--no-js-runtimes",
@@ -1307,9 +1509,14 @@ export class LibraryService {
           skipped: false,
         })),
       };
-      this.save("playlists", playlist);
       job.payload.generatedPlaylistId = playlist.id;
-      this.updateJob(job.id, { payload: job.payload });
+      job.payload.destinationOccurrences = playlist.entries.map(
+        (entry) => entry.id,
+      );
+      this.transaction(() => {
+        this.save("playlists", playlist!);
+        this.updateJob(job.id, { payload: job.payload });
+      });
     }
     const destinationOccurrences: string[] = Array.isArray(
       job.payload.destinationOccurrences,
@@ -1334,10 +1541,20 @@ export class LibraryService {
         destinationOccurrences.push(entry.id);
       }
       playlist.revision++;
-      this.save("playlists", playlist);
     }
+    if (
+      playlist &&
+      !job.payload.occurrenceId &&
+      destinationOccurrences.length !== preview.references.length
+    )
+      throw new Error(
+        "The saved source occurrence map is missing or incomplete. Add the source again; existing audio and playlist entries are preserved.",
+      );
     job.payload.destinationOccurrences = destinationOccurrences;
-    this.updateJob(job.id, { payload: job.payload });
+    this.transaction(() => {
+      if (playlist) this.save("playlists", playlist);
+      this.updateJob(job.id, { payload: job.payload });
+    });
     const stage = path.join(this.requireVault(), ".jobs", job.id);
     await mkdir(stage, { recursive: true });
     try {
@@ -1346,11 +1563,17 @@ export class LibraryService {
         const ref = preview.references[i];
         if (ref.unavailable || !ref.url) continue;
         const occurrenceId = String(
-          job.payload.occurrenceId ||
-            destinationOccurrences[i] ||
-            playlist?.entries[i]?.id ||
-            "",
+          job.payload.occurrenceId || destinationOccurrences[i] || "",
         );
+        if (playlist) {
+          playlist = this.get<Playlist>("playlists", playlist.id);
+          if (!playlist.entries.some((entry) => entry.id === occurrenceId)) {
+            this.updateJob(job.id, {
+              message: `Skipped removed occurrence: ${ref.title}`,
+            });
+            continue;
+          }
+        }
         try {
           let track = this.all<Track>("tracks").find(
             (t) =>
@@ -1413,7 +1636,7 @@ export class LibraryService {
                 id,
                 path.extname(downloaded),
               );
-            const metadata = {
+            const metadata = normalizeMetadata({
               ...inspected.metadata,
               title:
                 info.track ||
@@ -1423,8 +1646,8 @@ export class LibraryService {
               artist: info.artist || "",
               album: info.album || "",
               albumArtist: info.album_artist || "",
-              date: info.release_date || "",
-            };
+              date: String(info.release_date || ""),
+            });
             const chapters: Chapter[] = (info.chapters || []).map((c: any) => ({
               start: Number(c.start_time),
               title: String(c.title || "Chapter"),
@@ -1473,13 +1696,9 @@ export class LibraryService {
           }
           if (playlist) {
             playlist = this.get<Playlist>("playlists", playlist.id);
-            const entry = job.payload.occurrenceId
-              ? playlist.entries.find((e) => e.id === job.payload.occurrenceId)
-              : destinationOccurrences[i]
-                ? playlist.entries.find(
-                    (e) => e.id === destinationOccurrences[i],
-                  )
-                : playlist.entries[i];
+            const entry = playlist.entries.find(
+              (entry) => entry.id === occurrenceId,
+            );
             if (entry) {
               entry.trackId = track.id;
               entry.error = undefined;
@@ -1597,7 +1816,10 @@ export class LibraryService {
       data.destination ?? previous?.destination ?? "",
       4000,
     );
-    if (!path.isAbsolute(destination) || !existsSync(destination))
+    if (
+      (!previous || destination !== previous.destination) &&
+      (!path.isAbsolute(destination) || !existsSync(destination))
+    )
       throw new Error("Choose an available destination folder");
     const patch = data.profile === undefined ? {} : object(data.profile);
     for (const key of Object.keys(patch))
@@ -1641,10 +1863,16 @@ export class LibraryService {
       throw new Error("Record model and firmware for a user-tested profile");
     if (typeof profile.legacyPlaylist !== "boolean")
       throw new Error("Invalid playlist setting");
+    const playlistIds =
+      data.playlistIds === undefined
+        ? previous?.playlistIds || []
+        : ids(data.playlistIds);
+    for (const id of playlistIds) this.get<Playlist>("playlists", id);
     const outputChanged =
       previous &&
       (transport !== previous.transport ||
         destination !== previous.destination ||
+        JSON.stringify(playlistIds) !== JSON.stringify(previous.playlistIds) ||
         Object.keys(defaultProfile)
           .filter(
             (key) =>
@@ -1668,11 +1896,13 @@ export class LibraryService {
       transport,
       destination,
       volumeIdentity:
-        data.destination !== undefined ? "" : previous?.volumeIdentity || "",
+        destination !== previous?.destination
+          ? ""
+          : previous?.volumeIdentity || "",
       budget,
       profile,
-      playlistIds: previous?.playlistIds || [],
-      connected: true,
+      playlistIds,
+      connected: !!destination && existsSync(destination),
     };
     this.save("targets", target);
     return target;
@@ -1687,6 +1917,20 @@ export class LibraryService {
         entries: playlist.entries,
         playlistRevision: `${playlist.id}:${playlist.revision}`,
       };
+    }
+    if (!data.trackIds?.length && data.targetId) {
+      const target = this.get<Target>("targets", data.targetId);
+      if (target.playlistIds.length) {
+        const playlists = target.playlistIds.map((id) =>
+          this.get<Playlist>("playlists", id),
+        );
+        return {
+          entries: playlists.flatMap((playlist) => playlist.entries),
+          playlistRevision: playlists
+            .map((playlist) => `${playlist.id}:${playlist.revision}`)
+            .join("|"),
+        };
+      }
     }
     const tracks = data.trackIds?.length
       ? ids(data.trackIds).map((id) => this.get<Track>("tracks", id))
@@ -1737,11 +1981,7 @@ export class LibraryService {
         } catch {
           /* An absent cache, missing media or disconnected destination remains explicit in the returned state. */
         }
-      const missing =
-        !track ||
-        !existsSync(track.path) ||
-        entry.skipped ||
-        entry.reference.unavailable;
+      const missing = !track || !existsSync(track.path) || entry.skipped;
       const title = track?.metadata.title || entry.reference.title;
       if (!track || missing) {
         const reason = entry.skipped
@@ -1763,7 +2003,7 @@ export class LibraryService {
       const key = `${track.id}-${track.revision}-${target.profile.revision}`;
       if (!reusable.has(key)) {
         let found: { receipt: Receipt; bytes: number } | null = null;
-        const candidates = receipts
+        const candidates = (target.transport === "imazing" ? [] : receipts)
           .filter(
             (r) =>
               r.trackId === track!.id &&
@@ -2028,7 +2268,9 @@ export class LibraryService {
         let dest = await confined(targetRoot, `${batchId}/${name}`);
         let exportedName = name;
         let reused = false;
-        for (const previous of previousReceipts) {
+        for (const previous of target.transport === "imazing"
+          ? []
+          : previousReceipts) {
           if (
             previous.trackId !== track.id ||
             previous.trackRevision !== track.revision ||
@@ -2369,7 +2611,7 @@ export class LibraryService {
       const id = randomUUID(),
         dest = await confined(
           this.requireVault(),
-          `segments/${id}${path.extname(master.path)}`,
+          `segments/${id}${extension(master, "original")}`,
         );
       await mkdir(path.dirname(dest), { recursive: true });
       const child = {
@@ -2384,6 +2626,10 @@ export class LibraryService {
       this.save("tracks", {
         ...child,
         ...info,
+        locks: child.locks,
+        origins: child.origins,
+        artwork: child.artwork,
+        artworkOriginal: child.artworkOriginal,
         path: dest,
         originalPath: master.path,
         revision: 1,
@@ -2447,11 +2693,36 @@ export class LibraryService {
       name = `TuneVault-backup-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const staging = await confined(root, name + ".partial"),
       folder = await confined(root, name);
-    await mkdir(staging);
-    const snapshot = await this.snapshot(),
+    const { library: _library, ...snapshot } = await this.snapshot(),
       revisions = this.all<{ id: string; trackId: string; track: Track }>(
         "revisions",
       );
+    if (
+      [
+        snapshot.tracks,
+        snapshot.playlists,
+        snapshot.targets,
+        snapshot.jobs,
+        snapshot.receipts,
+        revisions,
+      ].some((records) => records.length > 100000)
+    )
+      throw new Error(
+        "Backup exceeds the restore limit of 100000 records per collection",
+      );
+    if (snapshot.playlists.some((playlist) => playlist.entries.length > 10000))
+      throw new Error(
+        "Backup playlist exceeds the restore limit of 10000 occurrences",
+      );
+    const bundle = {
+      schema: 1,
+      kind: includeMedia ? "full-media" : "metadata-only",
+      createdAt: now(),
+      snapshot,
+      revisions,
+    };
+    if (Buffer.byteLength(JSON.stringify(bundle), "utf8") > 100 * 1024 * 1024)
+      throw new Error("Backup metadata exceeds the restore limit of 100 MB");
     const records = [...snapshot.tracks, ...revisions.map((r) => r.track)];
     const sourceFiles = [
       ...new Set(
@@ -2480,6 +2751,7 @@ export class LibraryService {
     )
       throw new Error("Insufficient backup space");
     try {
+      await mkdir(staging);
       if (includeMedia) {
         await mkdir(path.join(staging, "media"));
         const copied = new Map<string, string>();
@@ -2501,16 +2773,10 @@ export class LibraryService {
           }
         }
       }
-      await writeFile(
-        path.join(staging, "bundle.json"),
-        JSON.stringify({
-          schema: 1,
-          kind: includeMedia ? "full-media" : "metadata-only",
-          createdAt: now(),
-          snapshot,
-          revisions,
-        }),
-      );
+      const metadata = JSON.stringify(bundle);
+      if (Buffer.byteLength(metadata, "utf8") > 100 * 1024 * 1024)
+        throw new Error("Backup metadata exceeds the restore limit of 100 MB");
+      await writeFile(path.join(staging, "bundle.json"), metadata);
       await rename(staging, folder);
       return {
         path: folder,
@@ -2635,11 +2901,7 @@ export class LibraryService {
     }
     if (this.running.size)
       throw new Error("Wait for media jobs before restoring");
-    const recovery = path.join(
-      this.dataDir,
-      `before-restore-${Date.now()}.json`,
-    );
-    await writeFile(recovery, JSON.stringify(await this.snapshot()));
+    const recovery = await this.backup(this.dataDir, false);
     const restoredTracks: Track[] = snapshot.tracks;
     for (const track of [
       ...snapshot.tracks,
@@ -2717,7 +2979,7 @@ export class LibraryService {
     });
     return {
       restored: restoredTracks.length,
-      recoveryBackup: recovery,
+      recoveryBackup: recovery.path,
       missing: restoredTracks.filter((t) => !existsSync(t.path)).length,
     };
   }
