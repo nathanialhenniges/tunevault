@@ -149,7 +149,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
       .click();
     await expect(
       page.getByRole("dialog", { name: "Change target destination" }),
-    ).toContainText(replacement);
+    ).toContainText(await realpath(replacement));
     expect(
       (await page.evaluate(() => window.tunevault.invoke("snapshot")))
         .targets[0].destination,
