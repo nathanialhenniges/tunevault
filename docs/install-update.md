@@ -18,13 +18,14 @@ silently replace an unsigned macOS application.
 
 Windows uses NSIS and a user-triggered authenticated update path. Both
 automatic download and automatic installation on quit are disabled. Production
-update checks remain not configured until the owner supplies a trusted public
-key and a signed release envelope. Do not treat a missing key as a successful
-update check. A signature is verified before parsing metadata, and the selected
+update checks use the owner's committed trusted public key. Builds without a
+trusted key report Not configured. Before a signed release feed is published,
+the app reports No published update is available yet; that is not a verified
+current-release result. A signature is verified before parsing metadata, and the selected
 installer is checked against authenticated size/SHA-512 before use.
 
 The app ID remains com.nathanialhenniges.tunevault. Version 4 uses a new durable
 library index; it does not silently ingest or modify historical folders.
-Import existing owned audio by choosing a vault and Add files/folder. Existing
+Import existing owned audio by choosing a Library folder and Add files/folder. Existing
 source files are copied, not moved. Keep backups before replacing any app.
 Uninstalling retains library data, media, exports and backups.

@@ -30,6 +30,16 @@ passed. Final platform CI and review results are appended as they become known.
   loader and wait for the rendered undo state. A fresh native run must verify
   those fixes on both advertised platforms.
 
+## Native acceptance for 285495b
+
+[CI run 41044248326](https://github.com/nathanialhenniges/tunevault/actions/runs/41044248326)
+passed on macOS 26 ARM64 and Windows x64. Both jobs built their production
+candidate once, passed packaged E2E/resource checks and completed installed
+N-to-N+1 upgrade fixtures with retained user data. Windows included the exact
+NSIS installation and authenticated test-key update; Mac exercised the DMG
+installation and manual replacement route. These test-key fixtures are not a
+published production update and do not remove the manual gates below.
+
 ## Source and real file processing
 
 - TypeScript and source/test ESLint passed.
@@ -126,9 +136,8 @@ macOS ARM64 DMG packaging/resource verification and six packaged E2E tests.
 The app executable is ARM64 and its Info.plist requires macOS 15.0; the controlled
 media tools also have a 15.0 deployment minimum. These local checks ran on the
 available newer Mac, not macOS 15. Windows installer minimum-version enforcement
-and the reduced native CI matrix still require their new CI run.
+and the reduced native CI matrix subsequently passed in the run recorded above.
 
-- Native Windows x64 NSIS install/authenticated update/uninstall retention.
 - Declared minimum OS checks; CI does not exercise the oldest supported OS.
 - Hands-on macOS 26 appearance, VoiceOver/NVDA, owner-driven native dialogs/drop,
   fresh quarantine/Gatekeeper and Windows reputation prompts.
@@ -137,8 +146,9 @@ and the reduced native CI matrix still require their new CI run.
 - A permitted Spotify/Apple direct connector; offline references remain usable.
 - Physical iPod touch/iMazing and a named USB player/model/firmware. Filesystem
   copy checks do not establish playback or iPod playlist order.
-- Owner production update public key, protected signing secret/environments
-  and corresponding-source/legal review. No production key was invented.
+- Owner verification of protected production signing secret/environments and
+  corresponding-source/legal review. The production public key is committed;
+  no production private key was used or invented by this implementation run.
 - Publishable-prose hygiene: the default local remove-ai-marks endpoint uses
   port 8765, currently owned by WolfWave, and no alternate endpoint is configured.
   Health checks returned an empty reply; that is not a working hygiene service.
