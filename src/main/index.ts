@@ -225,6 +225,15 @@ async function folderInfo(path: string) {
     ancestor = parent;
   }
 }
+// Windows caption buttons match the page background of the active theme.
+function captionOverlay() {
+  const dark = nativeTheme.shouldUseDarkColors;
+  return {
+    color: dark ? "#18191b" : "#ffffff",
+    symbolColor: dark ? "#ededf0" : "#24262a",
+    height: 40,
+  };
+}
 async function checkPaths(action: string, input: any) {
   if (["import.preview", "import.start"].includes(action)) {
     if (!Array.isArray(input?.paths) || input.paths.length > 10000)
@@ -386,6 +395,17 @@ app
       minHeight: 520,
       title: "TuneVault",
       icon,
+      // Content runs under the title bar: inset traffic lights on macOS,
+      // native caption buttons overlaid on Windows.
+      ...(process.platform === "darwin"
+        ? {
+            titleBarStyle: "hiddenInset" as const,
+            trafficLightPosition: { x: 18, y: 18 },
+          }
+        : {
+            titleBarStyle: "hidden" as const,
+            titleBarOverlay: captionOverlay(),
+          }),
       transparent: !!glass,
       backgroundColor: glass
         ? "#00000000"
@@ -421,6 +441,8 @@ app
             ? "#18191b"
             : "#ffffff",
       );
+      if (process.platform !== "darwin")
+        window?.setTitleBarOverlay(captionOverlay());
       window?.webContents.send("tunevault:materials", active);
       window?.webContents.send(
         "tunevault:system-theme",

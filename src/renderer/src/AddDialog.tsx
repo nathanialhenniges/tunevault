@@ -184,7 +184,7 @@ export default function AddDialog({
         {[
           ["files", "Local files"],
           ["source", "Paste a link"],
-          ["references", "Playlist references"],
+          ["references", "Playlist file"],
         ].map(([value, label]) => (
           <button
             key={value}

@@ -104,7 +104,9 @@ export default function Devices({
             <header>
               <h2>{target.name}</h2>
               <span className="subtle-badge">
-                {target.profile.compatibility}
+                {target.profile.compatibility === "Baseline"
+                  ? "Untested"
+                  : target.profile.compatibility}
               </span>
             </header>
             <div className="tabs">
@@ -146,7 +148,7 @@ export default function Devices({
                     {target.budget ? bytes(target.budget) : "Not set"} · not
                     detected capacity
                   </dd>
-                  <dt>Last observed destination capacity</dt>
+                  <dt>Last known free space</dt>
                   <dd>
                     {target.lastCapacity ? (
                       <>
@@ -163,7 +165,7 @@ export default function Devices({
                         .
                       </>
                     ) : (
-                      "Not measured yet; open export preflight while the destination is connected."
+                      "Not measured yet. Use Check files while the player is connected."
                     )}
                   </dd>
                 </dl>
@@ -423,7 +425,10 @@ function TargetContent({
             }
           />
           {playlist.name}
-          <span className="muted">{playlist.entries.length} occurrences</span>
+          <span className="muted">
+            {playlist.entries.length} song
+            {playlist.entries.length === 1 ? "" : "s"}
+          </span>
         </label>
       ))}
       <div className="button-row">
@@ -520,7 +525,7 @@ function TargetContent({
       )}
       {omissions.length > 0 && (
         <>
-          <h3>Unresolved / skipped occurrences</h3>
+          <h3>Songs not matched or skipped</h3>
           <ol className="reference-list">
             {omissions.slice(0, 100).map(({ entry, index, playlist }) => (
               <li key={entry.id}>
@@ -755,7 +760,7 @@ function Compatibility({
                 setMp3TagVersion(Number(e.target.value) as 3 | 4)
               }
             >
-              <option value={3}>ID3v2.3 · older-player baseline</option>
+              <option value={3}>ID3v2.3 · best for older players</option>
               <option value={4}>ID3v2.4 · test your player</option>
             </select>
           </label>
@@ -860,7 +865,7 @@ function Compatibility({
         <p className="small muted">
           Bitrate/sample rate apply when conversion is needed. Compatible audio
           is copied. Profile revision {target.profile.revision}; output changes
-          reset hardware compatibility to Baseline.
+          reset hardware compatibility to Untested.
         </p>
         <label className="check-line">
           <input
@@ -1132,6 +1137,11 @@ export function ExportDialog({
   const target = snapshot.targets.find((t) => t.id === chosen);
   const job = done ? snapshot.jobs.find((j) => j.id === done.id) || done : null;
   const complete = job?.status === "completed";
+  const preparable = plan
+    ? plan.items.filter(
+        (item) => item.action !== "Blocked" && item.action !== "Unavailable",
+      ).length
+    : 0;
   return (
     <Modal
       title={
@@ -1150,7 +1160,8 @@ export function ExportDialog({
             disabled={
               !chosen ||
               busy ||
-              (!playlistId && trackIds !== undefined && !trackIds.length)
+              (!playlistId && trackIds !== undefined && !trackIds.length) ||
+              (!!plan && preparable === 0)
             }
             onClick={async () => {
               setBusy(true);
@@ -1172,7 +1183,7 @@ export function ExportDialog({
               ? "Working…"
               : plan
                 ? "Prepare reviewed files"
-                : "Run preflight"}
+                : "Check files"}
           </button>
         )
       }
@@ -1199,17 +1210,24 @@ export function ExportDialog({
         <p className="notice">Set up a target in Devices & exports first.</p>
       )}
       {plan && !done && (
+        <p className={preparable ? "muted" : "warning"} role="status">
+          {preparable} of {plan.items.length} song
+          {plan.items.length === 1 ? "" : "s"} can be prepared.
+        </p>
+      )}
+      {plan && !done && (
         <>
           <dl className="property-list">
-            <dt>Selected occurrences</dt>
+            <dt>Selected songs</dt>
             <dd>
-              {plan.occurrences} · {plan.uniqueMedia} unique media
+              {plan.occurrences} song{plan.occurrences === 1 ? "" : "s"} ·{" "}
+              {plan.uniqueMedia} unique file{plan.uniqueMedia === 1 ? "" : "s"}
             </dd>
             <dt>Estimated output</dt>
             <dd>{bytes(plan.estimatedBytes)} · estimate, not a guarantee</dd>
             <dt>Known verified existing audio</dt>
             <dd>
-              {bytes(plan.knownBytes)} · selected occurrences already present
+              {bytes(plan.knownBytes)} · selected songs already on the player
             </dd>
             <dt>Configured content budget</dt>
             <dd>{plan.budget === null ? "Not set" : bytes(plan.budget)}</dd>
@@ -1278,7 +1296,7 @@ export function ExportDialog({
           </strong>
           <p>
             {job?.message ||
-              "The durable export job is queued. Files are not ready until the batch is committed."}
+              "Export queued. Files are not ready until it finishes."}
           </p>
           {["running", "queued"].includes(job?.status) && (
             <button onClick={() => run("jobs.cancel", { id: job.id })}>
@@ -1306,7 +1324,7 @@ export function ExportDialog({
               ? "Transfer these files with iMazing, check the actual iPod, then mark this batch transferred in the target history. Playlist creation and order need your device check."
               : target?.transport === "mtp"
                 ? "Direct MTP is unavailable. Use another transfer application to send this folder to your player."
-                : "The export receipt records file preparation. Playback compatibility still needs a device check."}
+                : "TuneVault recorded which files were prepared. Play a few songs on the player to confirm they work."}
           </p>
           <button
             onClick={() =>

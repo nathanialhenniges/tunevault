@@ -184,7 +184,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
       .getByRole("button", { name: "Review saved target export…", exact: true })
       .click();
     await page
-      .getByRole("button", { name: "Run preflight", exact: true })
+      .getByRole("button", { name: "Check files", exact: true })
       .click();
     await expect(
       page.getByRole("dialog").locator(".review-table tbody tr"),
@@ -297,8 +297,9 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
       )
       .toBe("completed");
     await page
-      .getByLabel("Filter library", { exact: true })
-      .selectOption("ready");
+      .getByRole("navigation", { name: "Main navigation" })
+      .getByRole("button", { name: "Ready for target", exact: true })
+      .click();
     await expect(page.locator(".track-table tbody tr")).toHaveCount(2);
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].setSize(1024, 768),
@@ -350,7 +351,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
     await page.getByRole("tab", { name: "Library", exact: true }).click();
     await choose(app, backup.path, "chooseRestore");
     await page
-      .getByRole("button", { name: "Restore validated backup…", exact: true })
+      .getByRole("button", { name: "Restore from backup…", exact: true })
       .click();
     await expect(
       page.getByRole("dialog", { name: "Review library restore" }),
@@ -367,7 +368,7 @@ test("target scope, reconnect, numeric albums, batch undo, restore review and na
       ).tracks.find((track: any) => track.id === first.id).metadata.title,
     ).toBe("Changed after backup");
     await page
-      .getByRole("button", { name: "Restore validated backup…", exact: true })
+      .getByRole("button", { name: "Restore from backup…", exact: true })
       .click();
     await page
       .getByRole("button", { name: "Restore selected backup", exact: true })

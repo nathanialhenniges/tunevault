@@ -1979,3 +1979,34 @@ button.link:hover:not(:disabled) {
   width: 96px;
   height: 96px;
 }
+
+/* Window chrome: content runs under the hidden title bar. The sidebar and
+   page header drag the window; their controls stay clickable. */
+.sidebar,
+.page-head,
+.demo-banner,
+.app-shell::before {
+  -webkit-app-region: drag;
+}
+.sidebar :is(button, a, input, select),
+.page-head :is(button, a, input, select, label),
+.demo-banner :is(button, a) {
+  -webkit-app-region: no-drag;
+}
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: var(--space-4);
+  z-index: 1;
+  pointer-events: none;
+}
+/* macOS: leave room for the inset traffic lights above the brand. */
+:root[data-platform="darwin"] .sidebar {
+  padding-top: 44px;
+}
+/* Windows: keep page actions clear of the overlaid caption buttons. */
+:root[data-platform="win32"] .page-head,
+:root[data-platform="win32"] .demo-banner {
+  padding-right: 140px;
+}

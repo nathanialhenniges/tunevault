@@ -70,6 +70,7 @@ export default function App() {
     [selected, setSelected] = useState<string[]>([]),
     [inspected, setInspected] = useState<string | null>(null),
     [targetId, setTargetId] = useState(""),
+    [playlistId, setPlaylistId] = useState(""),
     [modal, setModal] = useState<
       "add" | "target" | "export" | "batch" | "add-playlist" | null
     >(null),
@@ -499,6 +500,55 @@ export default function App() {
               )}
             </button>
           ))}
+          {snapshot.playlists.length > 0 && (
+            <>
+              <div className="sidebar-group-label saved-label">Playlists</div>
+              <div className="saved-filters sidebar-items">
+                {snapshot.playlists.map((playlist) => (
+                  <button
+                    key={playlist.id}
+                    className={
+                      view === "playlists" &&
+                      (playlistId || snapshot.playlists[0]?.id) === playlist.id
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() => {
+                      setPlaylistId(playlist.id);
+                      setView("playlists");
+                    }}
+                  >
+                    <Icon name="playlist" size={15} />
+                    <span>{playlist.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {snapshot.targets.length > 0 && (
+            <>
+              <div className="sidebar-group-label saved-label">Devices</div>
+              <div className="saved-filters sidebar-items">
+                {snapshot.targets.map((item) => (
+                  <button
+                    key={item.id}
+                    className={
+                      view === "devices" && target?.id === item.id
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() => {
+                      setTargetId(item.id);
+                      setView("devices");
+                    }}
+                  >
+                    <Icon name="device" size={15} />
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           <div className="sidebar-group-label saved-label">Saved filters</div>
           <div className="saved-filters">
             {filters.map(([value, label]) => (
@@ -518,17 +568,6 @@ export default function App() {
             ))}
           </div>
           <div className="sidebar-bottom">
-            <div className="mini-target">
-              <span className="small muted">Export target</span>
-              <strong>{target?.name || "No target configured"}</strong>
-              <span className="small muted">
-                {target
-                  ? target.profile.format.toUpperCase() +
-                    " · " +
-                    target.profile.compatibility
-                  : "Add a player in Devices & exports"}
-              </span>
-            </div>
             <button
               aria-label="Settings"
               className={`nav-item ${view === "settings" ? "active" : ""}`}
@@ -624,87 +663,82 @@ export default function App() {
                   </button>
                 </div>
               </div>
-              <div className="library-tools">
-                <label className="search-box">
-                  <Icon name="search" size={16} />
-                  <input
-                    ref={searchRef}
-                    type="search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search title, artist or album"
-                    aria-label="Search library"
-                  />
-                  <kbd>
-                    {window.tunevault.platform === "darwin" ? "⌘ F" : "Ctrl F"}
-                  </kbd>
-                </label>
-                <select
-                  aria-label="Filter by artist"
-                  value={artist}
-                  onChange={(e) => setArtist(e.target.value)}
-                >
-                  <option value="">All artists</option>
-                  {[
-                    ...new Set(
-                      tracks.map((t) => t.metadata.artist).filter(Boolean),
-                    ),
-                  ]
-                    .sort()
-                    .map((value) => (
-                      <option value={value} key={value}>
-                        {value}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  aria-label="Filter library"
-                  value={filter}
-                  onChange={(e) => chooseFilter(e.target.value)}
-                >
-                  {filters.map(([id, label]) => (
-                    <option key={id} value={id}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="library-subbar">
-                <div className="segmented" aria-label="Library display">
-                  <button
-                    className={trackView === "tracks" ? "selected" : ""}
-                    aria-pressed={trackView === "tracks"}
-                    onClick={() => chooseTrackView("tracks")}
-                  >
-                    <Icon name="playlist" size={15} />
-                    Tracks
-                  </button>
-                  <button
-                    className={trackView === "albums" ? "selected" : ""}
-                    aria-pressed={trackView === "albums"}
-                    onClick={() => chooseTrackView("albums")}
-                  >
-                    <Icon name="albums" size={15} />
-                    Albums
-                  </button>
-                </div>
-                <label className="target-select">
-                  Export target
-                  <select
-                    value={target?.id || ""}
-                    onChange={(e) => setTargetId(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      No target
-                    </option>
-                    {snapshot.targets.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              {(tracks.length > 0 || demo) && (
+                <>
+                  <div className="library-tools">
+                    <label className="search-box">
+                      <Icon name="search" size={16} />
+                      <input
+                        ref={searchRef}
+                        type="search"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search title, artist or album"
+                        aria-label="Search library"
+                      />
+                      <kbd>
+                        {window.tunevault.platform === "darwin"
+                          ? "⌘ F"
+                          : "Ctrl F"}
+                      </kbd>
+                    </label>
+                    <select
+                      aria-label="Filter by artist"
+                      value={artist}
+                      onChange={(e) => setArtist(e.target.value)}
+                    >
+                      <option value="">All artists</option>
+                      {[
+                        ...new Set(
+                          tracks.map((t) => t.metadata.artist).filter(Boolean),
+                        ),
+                      ]
+                        .sort()
+                        .map((value) => (
+                          <option value={value} key={value}>
+                            {value}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="library-subbar">
+                    <div className="segmented" aria-label="Library display">
+                      <button
+                        className={trackView === "tracks" ? "selected" : ""}
+                        aria-pressed={trackView === "tracks"}
+                        onClick={() => chooseTrackView("tracks")}
+                      >
+                        <Icon name="playlist" size={15} />
+                        Tracks
+                      </button>
+                      <button
+                        className={trackView === "albums" ? "selected" : ""}
+                        aria-pressed={trackView === "albums"}
+                        onClick={() => chooseTrackView("albums")}
+                      >
+                        <Icon name="albums" size={15} />
+                        Albums
+                      </button>
+                    </div>
+                    <label className="target-select">
+                      Export target
+                      <select
+                        value={target?.id || ""}
+                        onChange={(e) => setTargetId(e.target.value)}
+                      >
+                        <option value="" disabled>
+                          No target
+                        </option>
+                        {snapshot.targets.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </>
+              )}
               {loading ? (
                 <Empty title="Opening your library…">
                   Reading the local index.
@@ -737,36 +771,38 @@ export default function App() {
                   }
                 />
               )}
-              <div className="selection-bar">
-                <span>{selected.length} selected</span>
-                <div className="button-row">
-                  <button
-                    className="quiet"
-                    disabled={!selected.length}
-                    onClick={() => setInspected(selected[0])}
-                  >
-                    <Icon name="panel" size={16} />
-                    Show details
-                  </button>
-                  <button
-                    disabled={!selected.length || demo}
-                    onClick={() => setModal("batch")}
-                  >
-                    Edit tags…
-                  </button>
-                  <button
-                    disabled={
-                      !selected.length || demo || !snapshot.playlists.length
-                    }
-                    onClick={() => {
-                      setPlaylistChoice(snapshot.playlists[0]?.id || "");
-                      setModal("add-playlist");
-                    }}
-                  >
-                    Add to playlist…
-                  </button>
+              {selected.length > 0 && (
+                <div className="selection-bar">
+                  <span>{selected.length} selected</span>
+                  <div className="button-row">
+                    <button
+                      className="quiet"
+                      disabled={!selected.length}
+                      onClick={() => setInspected(selected[0])}
+                    >
+                      <Icon name="panel" size={16} />
+                      Show details
+                    </button>
+                    <button
+                      disabled={!selected.length || demo}
+                      onClick={() => setModal("batch")}
+                    >
+                      Edit tags…
+                    </button>
+                    <button
+                      disabled={
+                        !selected.length || demo || !snapshot.playlists.length
+                      }
+                      onClick={() => {
+                        setPlaylistChoice(snapshot.playlists[0]?.id || "");
+                        setModal("add-playlist");
+                      }}
+                    >
+                      Add to playlist…
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
           {view === "playlists" && (
@@ -775,6 +811,8 @@ export default function App() {
               run={run}
               inspect={setInspected}
               prepare={prepare}
+              playlistId={playlistId}
+              setPlaylistId={setPlaylistId}
             />
           )}
           {view === "devices" && (
@@ -792,7 +830,9 @@ export default function App() {
               <div className="page-head">
                 <div>
                   <h1>Activity</h1>
-                  <p>Durable jobs, recoverable failures and completed work.</p>
+                  <p>
+                    Imports, downloads and exports. Failed jobs can be retried.
+                  </p>
                 </div>
                 <button onClick={() => startAdd()}>Add music…</button>
               </div>
@@ -928,11 +968,6 @@ export default function App() {
               ? `${activeJobs.length} active job${activeJobs.length === 1 ? "" : "s"}`
               : status}
           </span>
-          <span className="tabular">
-            {tracks.length.toLocaleString()} track
-            {tracks.length === 1 ? "" : "s"} · {selected.length} selected
-          </span>
-          <span>Local library</span>
         </footer>
         {modal === "add" && (
           <AddDialog

@@ -191,14 +191,14 @@ export default function Settings({
         {pane === "library" && (
           <>
             <section>
-              <h2>Vault</h2>
+              <h2>Library folder</h2>
               <label className="field">
-                Vault folder
+                Library folder
                 <div className="path-picker">
                   <input
                     readOnly
                     value={settings.vault}
-                    placeholder="Choose a vault location"
+                    placeholder="Choose a library folder"
                   />
                   <button
                     onClick={async () => {
@@ -244,7 +244,7 @@ export default function Settings({
                     }
                   }}
                 >
-                  Restore validated backup…
+                  Restore from backup…
                 </button>
               </div>
               {restoreResult && (

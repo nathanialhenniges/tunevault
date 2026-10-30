@@ -6,6 +6,8 @@ import "./styles.css";
 document.documentElement.dataset.nativeGlass = String(
   window.tunevault.nativeGlass === true,
 );
+// Platform-specific sizing (Fluent on Windows) and window-chrome spacing.
+document.documentElement.dataset.platform = window.tunevault.platform;
 const boot = window.tunevault.bootAppearance;
 if (boot) {
   document.documentElement.dataset.appearance =

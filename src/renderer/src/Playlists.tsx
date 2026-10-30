@@ -10,14 +10,17 @@ export default function Playlists({
   run,
   prepare,
   inspect,
+  playlistId,
+  setPlaylistId,
 }: {
   snapshot: Snapshot;
   run: Run;
   prepare: (id: string) => void;
   inspect: (id: string) => void;
+  playlistId: string;
+  setPlaylistId: (id: string) => void;
 }) {
-  const [playlistId, setPlaylistId] = useState(""),
-    [create, setCreate] = useState(false),
+  const [create, setCreate] = useState(false),
     [name, setName] = useState(""),
     [edit, setEdit] = useState(false),
     [description, setDescription] = useState(""),
@@ -211,8 +214,7 @@ export default function Playlists({
                               </span>
                               <span>
                                 <strong>
-                                  {entry.reference.title ||
-                                    "Unavailable occurrence"}
+                                  {entry.reference.title || "Unavailable song"}
                                 </strong>
                                 <small>
                                   {entry.reference.artist || "Reference only"}
@@ -263,7 +265,7 @@ export default function Playlists({
                             <button
                               className="icon-button"
                               disabled={!position}
-                              aria-label={`Move occurrence ${position + 1} up`}
+                              aria-label={`Move song ${position + 1} up`}
                               onClick={() => move(entry, -1)}
                             >
                               ↑
@@ -273,14 +275,14 @@ export default function Playlists({
                               disabled={
                                 position === playlist.entries.length - 1
                               }
-                              aria-label={`Move occurrence ${position + 1} down`}
+                              aria-label={`Move song ${position + 1} down`}
                               onClick={() => move(entry, 1)}
                             >
                               ↓
                             </button>
                             <button
                               className="icon-button quiet"
-                              aria-label={`Remove occurrence ${position + 1} from playlist`}
+                              aria-label={`Remove song ${position + 1} from playlist`}
                               onClick={() =>
                                 run("playlists.remove", {
                                   id: playlist.id,

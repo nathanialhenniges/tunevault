@@ -274,7 +274,7 @@ test("packaged sandbox, real media, persistence, theme, legal and export flow", 
         );
         const contrasts = await page.evaluate(() => {
           const sidebar = document.querySelector(".sidebar")!;
-          const muted = sidebar.querySelector(".muted")!;
+          const muted = sidebar.querySelector(".sidebar-group-label")!;
           const canvas = document.createElement("canvas");
           canvas.width = canvas.height = 1;
           const ctx = canvas.getContext("2d")!;

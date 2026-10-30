@@ -53,7 +53,7 @@ export function RefreshReview({
               <tr key={`${change.occurrenceId}-${change.kind}-${index}`}>
                 <td>{labels[change.kind]}</td>
                 <td>
-                  <strong>{change.title || "Unavailable occurrence"}</strong>
+                  <strong>{change.title || "Unavailable song"}</strong>
                   {change.artist && (
                     <p className="small muted">{change.artist}</p>
                   )}
@@ -101,7 +101,7 @@ export function RefreshReview({
                     change.attachedTrackId ? (
                       "Source unavailable; existing local recording retained."
                     ) : (
-                      "Source unavailable; occurrence stays visible for review."
+                      "Source unavailable. The song stays listed so you can review it."
                     )
                   ) : change.attachedTrackId ? (
                     "Existing local recording remains attached."
