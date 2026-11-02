@@ -39,6 +39,18 @@ for (const file of [
     `Packaged legal notice missing: ${file}`,
   );
 if (process.platform === "darwin") {
+  const glassPrebuilds = join(
+    resources,
+    "app.asar.unpacked/node_modules/electron-liquid-glass/prebuilds",
+  );
+  assert(
+    (await stat(join(glassPrebuilds, "darwin-arm64/node.napi.armv8.node")))
+      .size > 0,
+    "Apple Silicon Liquid Glass module missing",
+  );
+  await assert.rejects(stat(join(glassPrebuilds, "darwin-x64")), {
+    code: "ENOENT",
+  });
   const plist = join(application, "Contents/Info.plist");
   assert.equal(
     process.arch,

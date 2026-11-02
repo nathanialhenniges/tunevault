@@ -7,6 +7,7 @@ files:
   - out/**
   - package.json
   - "!**/*.map"
+  - "!node_modules/electron-liquid-glass/prebuilds/darwin-x64/**"
 asar: true
 extraResources:
   - from: resources/icon.png
