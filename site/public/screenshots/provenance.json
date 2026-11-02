@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "app": "TuneVault",
+  "version": "4.0.0",
+  "capturedAt": "2026-11-02T21:50:01.346Z",
+  "platform": "darwin-arm64",
+  "method": "Direct Playwright screenshots of the packaged app with an isolated temporary library; Inspector captured as its actual rendered region.",
+  "audio": "Eight independently generated sine-wave MP3 files, imported by the production app. No real music or personal library used.",
+  "transferVerified": false,
+  "originalArtworkManifest": "src/renderer/src/assets/demo-covers/manifest.json",
+  "originalArtworkUnchanged": true,
+  "covers": [
+    {
+      "file": "after-hours.png",
+      "sha256": "c90a6046fd934ecfe425ec152df7296c66ed16bbf80c234a590f863c37a25670",
+      "fictional": true,
+      "generatedWith": "built-in imagegen"
+    },
+    {
+      "file": "small-satellites.png",
+      "sha256": "28e839fa29d5e4e015f9ae2dbf6e8bf1e3dfec17a6a43e3ad94cd87888d14f5a",
+      "fictional": true,
+      "generatedWith": "built-in imagegen"
+    },
+    {
+      "file": "blue-hours.png",
+      "sha256": "ac7d0b785b2fd607b73b059e42b37396058ade4fc9d9e92db0257852c0521188",
+      "fictional": true,
+      "generatedWith": "built-in imagegen"
+    },
+    {
+      "file": "night-shift.png",
+      "sha256": "add0171dd977128c583f15afc5fff35d7a426606eb87047734a0039767cd1dd9",
+      "fictional": true,
+      "generatedWith": "built-in imagegen"
+    },
+    {
+      "file": "coast-to-coast.png",
+      "sha256": "85878a21c8ce3814130dbfaf12fdc58d7512f7f57999723240599c99f3100b56",
+      "fictional": true,
+      "generatedWith": "built-in imagegen"
+    },
+    {
+      "file": "sunday-tapes.png",
+      "sha256": "1ac8156c8210af8d73a3c6dc27364d32c0bc2b4b01f7f27363b7f136016ff578",
+      "fictional": true,
+      "generatedWith": "built-in imagegen"
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "library-light.png",
+      "sha256": "50997e0db78653f66e2e2c2da606109289c08c9d0d891e1bd1b21668933bffe0",
+      "width": 2200,
+      "height": 1600,
+      "scene": "library",
+      "appearance": "light"
+    },
+    {
+      "name": "library-dark.png",
+      "sha256": "ca954bf9245636aa810cc3b1194fce683cf57c3688e5a3ceade8b672f9cb8efc",
+      "width": 2200,
+      "height": 1600,
+      "scene": "library",
+      "appearance": "dark"
+    },
+    {
+      "name": "metadata-light.png",
+      "sha256": "61f4378a413848c88c7c8a9ead6642206e1e8b32077051398592e359f65fa97a",
+      "width": 600,
+      "height": 1546,
+      "scene": "metadata",
+      "appearance": "light"
+    },
+    {
+      "name": "metadata-dark.png",
+      "sha256": "da85a4fac7c8fb99cf11d9160066ed6ef814c5493d2be9fa5a6b654e3ed32df0",
+      "width": 600,
+      "height": 1546,
+      "scene": "metadata",
+      "appearance": "dark"
+    },
+    {
+      "name": "devices-light.png",
+      "sha256": "ab39aab246a8ee267cddf096d60b479e4e80a5a7f29756161f21498440beb342",
+      "width": 2200,
+      "height": 1600,
+      "scene": "devices",
+      "appearance": "light"
+    },
+    {
+      "name": "devices-dark.png",
+      "sha256": "d67c77cf2c2b066bdd540d3947f32b772de76afe62bdd40f117e9be83218b8f3",
+      "width": 2200,
+      "height": 1600,
+      "scene": "devices",
+      "appearance": "dark"
+    }
+  ]
+}

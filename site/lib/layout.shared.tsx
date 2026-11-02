@@ -1,5 +1,5 @@
-import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
-import { appName, basePath, repoUrl } from './shared';
+import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
+import { appName, basePath, repoUrl } from "./shared";
 
 export function baseOptions(): BaseLayoutProps {
   return {
@@ -13,5 +13,11 @@ export function baseOptions(): BaseLayoutProps {
       ),
     },
     githubUrl: repoUrl,
+    links: [
+      { text: "Features", url: "/#features" },
+      { text: "Docs", url: "/docs", active: "nested-url" },
+      { type: "button", text: "Download", url: "/#downloads", secondary: true },
+    ],
+    themeSwitch: { enabled: true, mode: "light-dark-system" },
   };
 }
