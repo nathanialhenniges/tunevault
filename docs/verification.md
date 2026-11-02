@@ -6,12 +6,26 @@ passed. Final platform CI and review results are appended as they become known.
 
 ## Latest verified application candidate (2026-11-02)
 
-[Native CI run 41420164237](https://github.com/nathanialhenniges/tunevault/actions/runs/41420164237)
-passed for `e6fda8d` on macOS ARM64 and Windows x64: typecheck, lint, 169
-unit/integration tests, ten E2E tests, package checks, exact production installer
-smoke and separate disposable-key installed N-to-N+1 upgrade fixtures. The local
-installed test remains skipped outside its dedicated native fixture phase.
-Downloaded Mac/Windows candidates matched their recorded sizes and SHA-512.
+[Native CI run 41425515730](https://github.com/nathanialhenniges/tunevault/actions/runs/41425515730)
+passed for `6a461bf` on macOS ARM64 and Windows x64: typecheck, lint, 177
+unit/integration tests, ten packaged E2E tests, package checks, exact production
+installer smoke and separate disposable-key installed N-to-N+1 upgrade fixtures.
+The installed test is skipped in the general E2E phase and runs separately in
+its dedicated native fixture phase; that skip is not counted as an upgrade pass.
+Both jobs' completed steps and logs were rechecked on 2026-11-02.
+
+The subsequent `a19f730` and `607ac13` commits change only the website. Comparing
+their application, tool, packaging and test files against `6a461bf` shows no
+changes. [Pages run 41533055956](https://github.com/nathanialhenniges/tunevault/actions/runs/41533055956)
+passed site lint, typecheck, static export and deployment for `607ac13`. The
+public page was then inspected with its real app screenshots, both platform
+artifact links from native run 41425515730, GitHub sign-in/expiry disclosure and
+unsigned-install guidance. Desktop/mobile light and dark renders were checked
+locally. Six screenshot hashes match the committed provenance manifest.
+
+The earlier `e6fda8d` candidates were downloaded and matched their recorded sizes
+and SHA-512. That historical download check is not a fresh hash check of the
+`6a461bf` CI artifact ZIPs.
 
 The Mac package excludes the unused Intel Liquid Glass module and requires its
 ARM64 counterpart. About displays runtime, bundled-tool and direct app-library
