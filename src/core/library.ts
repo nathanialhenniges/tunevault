@@ -3102,6 +3102,19 @@ export class LibraryService {
       chapters = job.payload.chapters as Chapter[];
     validateChapters(chapters, master.duration);
     const tools = await this.tools();
+    const segmentIds = job.payload.segmentIds
+      ? ids(job.payload.segmentIds)
+      : chapters.map(() => randomUUID());
+    if (
+      segmentIds.length !== chapters.length ||
+      new Set(segmentIds).size !== segmentIds.length
+    )
+      throw new Error("Split checkpoint does not match reviewed chapters");
+    // Persist identities before writing so retries and restarts reuse completed children.
+    this.updateJob(job.id, { payload: { ...job.payload, segmentIds } });
+    const completed = new Map(
+      this.all<Track>("tracks").map((track) => [track.id, track]),
+    );
     for (let i = 0; i < chapters.length; i++) {
       signal.throwIfAborted();
       const chapter = chapters[i],
@@ -3109,11 +3122,26 @@ export class LibraryService {
           chapter.start,
           chapters[i + 1]?.start ?? master.duration,
         ];
-      const id = randomUUID(),
-        dest = await confined(
-          this.requireVault(),
-          `segments/${id}${extension(master, "original")}`,
-        );
+      const id = segmentIds[i];
+      const existing = completed.get(id);
+      if (existing) {
+        if (
+          existing.parentId !== master.id ||
+          existing.range?.[0] !== range[0] ||
+          existing.range?.[1] !== range[1] ||
+          !existsSync(existing.path) ||
+          (await hashFile(existing.path)) !== existing.hash
+        )
+          throw new Error(
+            "A completed split segment is missing or changed; repair it before retrying",
+          );
+        this.updateJob(job.id, { progress: (i + 1) / chapters.length });
+        continue;
+      }
+      const dest = await confined(
+        this.requireVault(),
+        `segments/${id}${extension(master, "original")}`,
+      );
       await mkdir(path.dirname(dest), { recursive: true });
       const child = {
         ...master,

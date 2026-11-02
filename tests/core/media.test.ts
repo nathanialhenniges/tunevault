@@ -1045,3 +1045,63 @@ it("cached tool diagnostics still reject an altered manifest version", async () 
   );
   await expect(verifyTools(directory)).rejects.toThrow("Missing or invalid");
 });
+
+it("retries a partially completed split after restart without duplicating completed segments", async () => {
+  const { root, service } = await fixture();
+  const source = await audio(root);
+  await complete(
+    service,
+    (await service.dispatch("import.start", { paths: [source] })) as Job,
+  );
+  const master = (await service.snapshot()).tracks[0];
+  const originalWriter = media.writeMedia;
+  const writer = vi
+    .spyOn(media, "writeMedia")
+    .mockImplementationOnce(originalWriter)
+    .mockRejectedValueOnce(new Error("Synthetic disk failure"));
+  const job = (await service.dispatch("mixes.split", {
+    id: master.id,
+    chapters: [
+      { start: 0, title: "First" },
+      { start: 0.75, title: "Second" },
+    ],
+  })) as Job;
+  expect((await complete(service, job)).status).toBe("failed");
+  writer.mockRestore();
+  const first = (await service.snapshot()).tracks.find(
+    (track) => track.parentId === master.id,
+  )!;
+  await service.dispatch("tracks.edit", {
+    ids: [first.id],
+    changes: { title: "Reviewed first segment" },
+  });
+  const edited = (await service.snapshot()).tracks.find(
+    (track) => track.id === first.id,
+  )!;
+  const bytes = await readFile(edited.path);
+  await writeFile(edited.path, "corrupted segment");
+  await service.dispatch("jobs.retry", { id: job.id });
+  const rejected = await complete(service, job);
+  expect(rejected.status).toBe("failed");
+  expect(rejected.message).toContain("completed split segment");
+  expect(
+    (await service.snapshot()).tracks.filter(
+      (track) => track.parentId === master.id,
+    ),
+  ).toHaveLength(1);
+  await writeFile(edited.path, bytes);
+  service.close();
+  const reopened = new LibraryService({
+    dataDir: path.join(root, "data"),
+    toolsDir,
+  });
+  cleanups.push(async () => reopened.close());
+  await reopened.dispatch("jobs.retry", { id: job.id });
+  expect((await complete(reopened, job)).status).toBe("completed");
+  const children = (await reopened.snapshot()).tracks.filter(
+    (track) => track.parentId === master.id,
+  );
+  expect(children).toHaveLength(2);
+  expect(children.find((track) => track.id === first.id)).toEqual(edited);
+  expect(await readFile(edited.path)).toEqual(bytes);
+});
