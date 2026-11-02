@@ -23,9 +23,12 @@ artifact links from native run 41425515730, GitHub sign-in/expiry disclosure and
 unsigned-install guidance. Desktop/mobile light and dark renders were checked
 locally. Six screenshot hashes match the committed provenance manifest.
 
-The earlier `e6fda8d` candidates were downloaded and matched their recorded sizes
-and SHA-512. That historical download check is not a fresh hash check of the
-`6a461bf` CI artifact ZIPs.
+The current `6a461bf` Mac and Windows artifact ZIPs were downloaded through
+GitHub Actions and extracted on 2026-11-02. Each contained installer matched
+its platform evidence record's exact size and SHA-512: Mac DMG 258,644,624 bytes;
+Windows EXE 231,006,121 bytes. This checks the downloaded installer bytes against
+CI evidence, not production release-envelope authentication, OS signing or a
+fresh installation on this workstation.
 
 The Mac package excludes the unused Intel Liquid Glass module and requires its
 ARM64 counterpart. About displays runtime, bundled-tool and direct app-library
