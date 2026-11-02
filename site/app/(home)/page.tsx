@@ -9,7 +9,7 @@ const features = [
   ],
   [
     "Clean tags and artwork",
-    "Look up titles, artists, albums and covers from MusicBrainz, then approve each change.",
+    "Look up tags with MusicBrainz and artwork with Cover Art Archive, then approve each change.",
   ],
   [
     "Ordered playlists",
