@@ -5,22 +5,33 @@ description: Download TuneVault for Mac or Windows.
 
 ## Requirements
 
-| Computer | Requirement |
-| --- | --- |
-| Mac | Apple Silicon (M1 or newer), macOS 15 or later |
-| Windows | 64-bit PC, Windows 10 or 11 |
+| Computer | Requirement                                    |
+| -------- | ---------------------------------------------- |
+| Mac      | Apple Silicon (M1 or newer), macOS 15 or later |
+| Windows  | 64-bit PC, Windows 10 or 11                    |
 
 Intel Macs aren't supported. You don't need anything else installed: the tools TuneVault
 uses come bundled with the app.
 
 ## Download
 
-Get the latest version from the [GitHub releases page](https://github.com/nathanialhenniges/tunevault/releases):
+Use the [project download page](/#downloads) for the available platform builds.
+Public installers, once published, come from [GitHub Releases](https://github.com/nathanialhenniges/tunevault/releases):
 
 - **Mac:** `TuneVault-<version>-mac-arm64.dmg`
 - **Windows:** `TuneVault-<version>-win-x64.exe`
 
-Only download TuneVault from that page.
+Until a public release is available, the download page can offer temporary CI test
+builds. These ZIP downloads require GitHub sign-in and show their expiry date.
+Extract the ZIP, then open the DMG or EXE inside. Only complete candidate pairs
+from successful main-branch native CI are offered. They are test builds, not releases.
+
+## Unsigned personal project
+
+TuneVault is Nathanial Henniges's personal project, made for fun and educational
+use. The app is MIT licensed. Installers are unsigned: there is no Apple Developer
+ID signing/notarization or Microsoft publisher certificate. Your OS may warn or
+block the first launch. This purpose grants no rights to music, artwork or services.
 
 ## Mac
 
@@ -28,23 +39,25 @@ Only download TuneVault from that page.
 2. Drag **TuneVault** into **Applications**.
 3. Open TuneVault from Applications.
 
-TuneVault isn't signed with an Apple Developer ID yet, so the first launch is blocked. To
-allow it:
+If macOS blocks TuneVault because it has no Apple Developer ID/notarization, verify
+that you obtained the expected build from the official project, then use the
+per-app override if you choose to proceed:
 
 1. Open **System Settings → Privacy & Security**.
 2. Scroll down and click **Open Anyway** next to the TuneVault message.
-3. Confirm, and TuneVault opens. You only do this once.
+3. Confirm and reopen TuneVault. macOS may require approval again for a new build.
 
 <Callout type="warn">
-  Don't turn off Gatekeeper or run terminal commands to remove quarantine. Open Anyway only
-  allows TuneVault.
+  Don't turn off Gatekeeper or run terminal commands to remove quarantine. Open
+  Anyway only allows TuneVault.
 </Callout>
 
 ## Windows
 
 1. Run the `.exe` installer.
 2. If **Windows protected your PC** appears, click **More info → Run anyway**. This shows
-   because the installer isn't signed with a Microsoft publisher certificate yet.
+   because the installer has no Microsoft publisher certificate. Proceed only if
+   you trust the official build you downloaded.
 3. Follow the installer. It installs for your user account only, and you can choose the
    install folder.
 

@@ -7,10 +7,20 @@ An artifact's existence is not proof of native
 installation or hardware compatibility; see verification.md for actual checks.
 
 These builds have no Developer ID/notarization or Microsoft publisher signing.
+TuneVault is Nathanial Henniges's personal project, made for fun and educational
+use. This purpose grants no rights to third-party music, artwork or services;
+the app code remains MIT licensed.
 On macOS, verify the official download and use the operating system's
 per-app Open/Open Anyway process if you choose to proceed. Do not disable
 Gatekeeper globally or remove quarantine recursively. On Windows, inspect the
 unknown-publisher prompt; never disable antivirus to install TuneVault.
+
+Use the [project download page](https://nathanialhenniges.github.io/tunevault/#downloads)
+for platform links. Until a public release is published, the page offers only
+unexpired test builds from successful main-branch native CI, when available.
+Those GitHub artifact ZIPs require sign-in: extract the ZIP and open its DMG
+or EXE. Expired, failed or incomplete candidate pairs are not offered.
+Public release installers appear separately once published by the owner.
 
 The macOS path is Check -> authenticated DMG download -> Reveal installer ->
 Quit -> replace TuneVault in Applications -> reopen. TuneVault does not
@@ -18,7 +28,9 @@ silently replace an unsigned macOS application.
 
 Windows uses NSIS and a user-triggered authenticated update path. Both
 automatic download and automatic installation on quit are disabled. Production
-update checks use the owner's committed trusted public key. Builds without a
+update authentication is separate from operating-system code signing: a
+verified update does not remove Gatekeeper or unknown-publisher warnings.
+Production update checks use the owner's committed trusted public key. Builds without a
 trusted key report Not configured. Before a signed release feed is published,
 the app reports No published update is available yet; that is not a verified
 current-release result. A signature is verified before parsing metadata, and the selected

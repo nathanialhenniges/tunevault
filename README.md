@@ -4,6 +4,9 @@ TuneVault is a local music archive for Apple Silicon Macs running macOS 15+
 and x64 PCs running Windows 10+. Import owned audio,
 review metadata, keep ordered playlists and prepare files for portable players.
 Nathanial Henniges personally maintains and publishes the app.
+This is a personal project made for fun and educational use. Its installers
+are unsigned: no Apple Developer ID/notarization or Microsoft publisher
+certificate is used. The app code remains MIT licensed.
 
 The user guide is at [nathanialhenniges.github.io/tunevault](https://nathanialhenniges.github.io/tunevault/).
 
@@ -34,7 +37,9 @@ committed owner public key. See
 Public installers have not been published by this rebuild. Current installer
 targets are an Apple Silicon DMG and a Windows x64 NSIS installer. Intel Macs
 are not supported. A Linux AppImage has been discussed but is not implemented
-or verified. For development:
+or verified. Find [downloads and current CI test builds](https://nathanialhenniges.github.io/tunevault/#downloads)
+on the project site. CI ZIP downloads require GitHub sign-in and expire;
+they are separate from public GitHub Releases. For development:
 
 ```bash
 npm ci

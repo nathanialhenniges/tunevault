@@ -7,6 +7,14 @@ Check for a new version in **Settings → Updates**. Updates come only from the 
 GitHub releases and are signature-checked before anything is installed. If a check fails
 verification, nothing is installed.
 
+Before the owner publishes a release, TuneVault reports that no published update
+is available. Temporary CI test builds are downloaded from the website's test-build
+links, not installed through the production updater.
+
+Update authentication checks release metadata and downloaded bytes. It is separate
+from Apple Developer ID/notarization or Microsoft publisher signing; these
+personal-project installers remain unsigned and OS warnings still apply.
+
 ## Mac
 
 1. TuneVault downloads and verifies the new `.dmg`.

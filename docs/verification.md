@@ -1,10 +1,29 @@
 # Verification record
 
-Implementation run: 2026-10-29–30. Evidence levels below are deliberately separate.
+Implementation run: 2026-10-29–2026-11-02. Evidence levels below are deliberately separate.
 This file records executed checks, not a promise that every acceptance item has
 passed. Final platform CI and review results are appended as they become known.
 
-## Current local acceptance audit (2026-10-30)
+## Latest verified application candidate (2026-11-02)
+
+[Native CI run 41420164237](https://github.com/nathanialhenniges/tunevault/actions/runs/41420164237)
+passed for `e6fda8d` on macOS ARM64 and Windows x64: typecheck, lint, 169
+unit/integration tests, ten E2E tests, package checks, exact production installer
+smoke and separate disposable-key installed N-to-N+1 upgrade fixtures. The local
+installed test remains skipped outside its dedicated native fixture phase.
+Downloaded Mac/Windows candidates matched their recorded sizes and SHA-512.
+
+The Mac package excludes the unused Intel Liquid Glass module and requires its
+ARM64 counterpart. About displays runtime, bundled-tool and direct app-library
+versions; the offline third-party notices dialog was exercised and inspected.
+
+The docs/download refresh also passed fresh tool verification and 177 local
+unit/integration tests, including candidate availability/expiry tests. FFmpeg
+8.0.1/ffprobe, yt-dlp, Deno and EJS passed exact version/hash checks and media
+codec/container checks. Real media-processing tests passed; no physical-player
+or oldest-supported-OS result is implied. Historical results follow below.
+
+## Earlier local acceptance audit (2026-10-30)
 
 - Typecheck, lint and 169 unit/integration tests passed after cancellation and
   restore-safety fixes. Eight E2E tests passed, including the real unpackaged
@@ -27,8 +46,8 @@ passed. Final platform CI and review results are appended as they become known.
   research-source bytes. No provenance was stripped.
 - Native CI found a missing development Electron executable and an E2E race
   with the preceding artwork undo. The tests now use Electron's official lazy
-  loader and wait for the rendered undo state. A fresh native run must verify
-  those fixes on both advertised platforms.
+  loader and wait for the rendered undo state. The subsequent native runs
+  recorded here verified those fixes on both advertised platforms.
 
 ## Native acceptance for 285495b
 

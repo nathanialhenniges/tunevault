@@ -16,11 +16,23 @@ change GitHub settings or publish assets without a separate instruction.
    release key and promote all verified candidates together. No partial feed.
 
 The production updater trusts only resources/update-keys.json publicKeys.
-It is intentionally empty until the owner supplies a key. Generate an Ed25519
-key offline, keep its private half in encrypted owner backup and the protected
-release environment, and commit only its public PEM. Never put a production
+The owner's Ed25519 public key is committed there. Keep its private half in
+encrypted owner backup and the protected release environment; commit only
+public keys. Never put a production
 private key in the repository, logs, installers or PR jobs. See update-trust.md
 for exact setup and rotation details.
+
+TuneVault is a personal project made for fun and educational use. Its installers
+have no Apple Developer ID/notarization or Microsoft publisher certificate.
+Release-envelope authentication is separate from OS code signing and does not
+remove operating-system warnings. The MIT app license remains unchanged.
+
+The landing page looks up complete public installer pairs at site-build time.
+Before publication it can instead link to unexpired Mac/Windows artifact ZIPs
+from the same successful main-branch native run, clearly labeled as test builds
+requiring GitHub sign-in. Pages refreshes after successful native CI, published
+releases and daily expiry checks. Pull requests validate the site without
+deploying it. These links never dispatch or publish a release.
 
 macOS unsigned updates are verified DMG downloads and manual replacement.
 Windows uses real NSIS installed upgrades; running an unpacked exe is not
