@@ -6,6 +6,23 @@ passed. Final platform CI and review results are appended as they become known.
 
 ## Latest verified application candidate (2026-11-02)
 
+[Native CI run 41535525282](https://github.com/nathanialhenniges/tunevault/actions/runs/41535525282)
+passed for `6b738ad` on macOS ARM64 and Windows x64: typecheck, lint, 178
+unit/integration tests, 11 packaged E2E tests per platform, resource verification,
+exact production installer smoke and separate installed N-to-N+1 upgrade fixtures.
+This includes persistent split-job checkpoints: a partial failure/restart no
+longer duplicates completed segments, edited segments are preserved, and changed
+segment bytes block retry. Keyboard playlist reorder focus has a packaged test.
+
+[Pages run 41536709565](https://github.com/nathanialhenniges/tunevault/actions/runs/41536709565)
+passed the automatic refresh after native CI. The public HTML was fetched and
+confirmed to offer `6b738ad` artifacts from run 41535525282, with sign-in and
+unsigned-installer disclosures. The earlier downloaded-installer hash checks
+below apply to `6a461bf`, not this newer candidate. No physical-device,
+minimum-OS, production signing or public-release gate is implied.
+
+## Earlier verified candidate and website redesign (2026-11-02)
+
 [Native CI run 41425515730](https://github.com/nathanialhenniges/tunevault/actions/runs/41425515730)
 passed for `6a461bf` on macOS ARM64 and Windows x64: typecheck, lint, 177
 unit/integration tests, ten packaged E2E tests, package checks, exact production
