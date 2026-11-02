@@ -23,6 +23,38 @@ import { updateOptions } from "../update/config";
 import { Credentials } from "./credentials";
 import { FileGrants } from "./permissions";
 import { CURRENT_DISCLAIMER_VERSION } from "../shared/types";
+import packageInfo from "../../package.json";
+
+async function bundledToolVersions() {
+  let toolVersions: Record<string, string>;
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const manifest = JSON.parse(
+      await readFile(
+        join(
+          app.isPackaged
+            ? join(process.resourcesPath, "tools")
+            : resolve("resources/tools", `${process.platform}-${process.arch}`),
+          "manifest.json",
+        ),
+        "utf8",
+      ),
+    );
+    toolVersions = Object.fromEntries(
+      manifest.entries
+        .slice(0, 8)
+        .map((tool: any) => [
+          String(tool.name).slice(0, 40),
+          String(tool.version).slice(0, 100),
+        ]),
+    );
+    if (manifest.ejs)
+      toolVersions["yt-dlp EJS"] = String(manifest.ejs).slice(0, 100);
+  } catch {
+    toolVersions = { bundle: "Manifest unavailable" };
+  }
+  return toolVersions;
+}
 
 const toolPids = new Set<number>();
 function stopTool(pid: number) {
@@ -556,34 +588,7 @@ app
         const input = raw as any;
         if (action === "diagnostics.preview") {
           const state = await command("snapshot");
-          let toolVersions: Record<string, string>;
-          try {
-            const { readFile } = await import("node:fs/promises");
-            const manifest = JSON.parse(
-              await readFile(
-                join(
-                  app.isPackaged
-                    ? join(process.resourcesPath, "tools")
-                    : resolve(
-                        "resources/tools",
-                        `${process.platform}-${process.arch}`,
-                      ),
-                  "manifest.json",
-                ),
-                "utf8",
-              ),
-            );
-            toolVersions = Object.fromEntries(
-              manifest.entries
-                .slice(0, 8)
-                .map((tool: any) => [
-                  String(tool.name).slice(0, 40),
-                  String(tool.version).slice(0, 100),
-                ]),
-            );
-          } catch {
-            toolVersions = { bundle: "Manifest unavailable" };
-          }
+          const toolVersions = await bundledToolVersions();
           const report = {
             app: "TuneVault",
             version: app.getVersion(),
@@ -758,6 +763,23 @@ app
             arch: process.arch,
             runtime,
             nativeGlass: glassActive(),
+            software: {
+              runtimes: {
+                Electron: process.versions.electron,
+                Chromium: process.versions.chrome,
+                "Node.js": process.versions.node,
+                ...(process.versions.sqlite
+                  ? { SQLite: process.versions.sqlite }
+                  : {}),
+              },
+              tools: await bundledToolVersions(),
+              libraries: {
+                ...packageInfo.dependencies,
+                ...(process.platform === "darwin"
+                  ? packageInfo.optionalDependencies
+                  : {}),
+              },
+            },
             packaged: app.isPackaged,
           };
         if (action === "openExternal") {

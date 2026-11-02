@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { Run } from "./Inspector";
 
 export default function About({ run, logo }: { run: Run; logo: string }) {
@@ -10,7 +10,14 @@ export default function About({ run, logo }: { run: Run; logo: string }) {
       .catch(() => {});
   }, [run]);
   const versionText = info
-    ? `TuneVault ${info.version} · ${info.platform}-${info.arch}`
+    ? [
+        `TuneVault ${info.version} · ${info.platform}-${info.arch}`,
+        ...Object.values(info.software || {}).flatMap((group) =>
+          Object.entries(group as Record<string, string>).map(
+            ([name, version]) => `${name}: ${version}`,
+          ),
+        ),
+      ].join("\n")
     : "";
   return (
     <>
@@ -65,6 +72,35 @@ export default function About({ run, logo }: { run: Run; logo: string }) {
           </p>
         </section>
         <section>
+          <h2>Software versions</h2>
+          <p className="small muted">
+            Versions included in this build. Bundled tools update with
+            TuneVault.
+          </p>
+          {info?.software &&
+            Object.entries(info.software).map(([group, versions]) => (
+              <div key={group}>
+                <h3>
+                  {group === "runtimes"
+                    ? "Runtime"
+                    : group === "tools"
+                      ? "Bundled tools"
+                      : "Third-party libraries"}
+                </h3>
+                <dl className="property-list">
+                  {Object.entries(versions as Record<string, string>).map(
+                    ([name, version]) => (
+                      <Fragment key={name}>
+                        <dt>{name}</dt>
+                        <dd>{version}</dd>
+                      </Fragment>
+                    ),
+                  )}
+                </dl>
+              </div>
+            ))}
+        </section>
+        <section>
           <h2>Legal</h2>
           <div className="button-row">
             <button onClick={() => run("openLegal", { document: "license" })}>
@@ -87,7 +123,9 @@ export default function About({ run, logo }: { run: Run; logo: string }) {
           </div>
           <p className="small muted">
             App code is MIT licensed. Bundled tools such as FFmpeg, yt-dlp and
-            Deno keep their own licenses, listed in Third-party notices.
+            Deno keep their own licenses, listed in Third-party notices. Their
+            inclusion does not imply endorsement by their authors or grant
+            rights to music or artwork.
           </p>
         </section>
       </div>
