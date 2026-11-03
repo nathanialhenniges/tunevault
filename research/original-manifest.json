@@ -1,0 +1,193 @@
+{
+  "schema": 1,
+  "copiedAt": "2026-11-03",
+  "source": "/Users/nathanialhenniges/Developer/mrdemonwolf/cli-ai-conversations/personal/tunevault",
+  "preservation": "Unmodified byte-for-byte copies; generated-art provenance retained.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "bytes": 3487,
+      "sha256": "9ef4fffd6955fe5d37a71d928f76ea9a5892c5e62d3e02c31d4bf3b5049f5aeb"
+    },
+    {
+      "path": "assets/branding/tunevault-wolf-concept.png",
+      "bytes": 931141,
+      "sha256": "372cef75cbd89ca084f3d20a159033eaa9dabbc5f8a7e980536405cb97e5cec8"
+    },
+    {
+      "path": "assets/demo-covers/after-hours.png",
+      "bytes": 2590840,
+      "sha256": "c90a6046fd934ecfe425ec152df7296c66ed16bbf80c234a590f863c37a25670"
+    },
+    {
+      "path": "assets/demo-covers/blue-hours.png",
+      "bytes": 2536218,
+      "sha256": "ac7d0b785b2fd607b73b059e42b37396058ade4fc9d9e92db0257852c0521188"
+    },
+    {
+      "path": "assets/demo-covers/coast-to-coast.png",
+      "bytes": 3135045,
+      "sha256": "85878a21c8ce3814130dbfaf12fdc58d7512f7f57999723240599c99f3100b56"
+    },
+    {
+      "path": "assets/demo-covers/manifest.json",
+      "bytes": 8634,
+      "sha256": "04f94953b9fbe400f3144c5551333fa4a9ad6c3c8590fbf666435a2c515d1d6a"
+    },
+    {
+      "path": "assets/demo-covers/night-shift.png",
+      "bytes": 2639977,
+      "sha256": "add0171dd977128c583f15afc5fff35d7a426606eb87047734a0039767cd1dd9"
+    },
+    {
+      "path": "assets/demo-covers/small-satellites.png",
+      "bytes": 3058033,
+      "sha256": "28e839fa29d5e4e015f9ae2dbf6e8bf1e3dfec17a6a43e3ad94cd87888d14f5a"
+    },
+    {
+      "path": "assets/demo-covers/sunday-tapes.png",
+      "bytes": 3158819,
+      "sha256": "1ac8156c8210af8d73a3c6dc27364d32c0bc2b4b01f7f27363b7f136016ff578"
+    },
+    {
+      "path": "assets/previews/devices-dark-orange.jpg",
+      "bytes": 70139,
+      "sha256": "e8242618da647ac043db06fdcccc7b944dbad0b66dec02b9a8fe74d4561b03aa"
+    },
+    {
+      "path": "assets/previews/inspector-narrow.jpg",
+      "bytes": 85305,
+      "sha256": "3f3d9bd12d51ea9c4f1523628998fbe53cf752dfe5f8e649fe8b499e92a37efa"
+    },
+    {
+      "path": "assets/previews/library-dark-blue.jpg",
+      "bytes": 120194,
+      "sha256": "43bfac563678c89d3f54c113210e41f2c9b6a40ac2a47e7e954a61ec4d20614b"
+    },
+    {
+      "path": "assets/previews/library-dark-orange.jpg",
+      "bytes": 120522,
+      "sha256": "07136acedee6731a1d4575d5095e5682844b88d0558037964f1aa086a6317706"
+    },
+    {
+      "path": "assets/previews/library-light-blue.jpg",
+      "bytes": 122710,
+      "sha256": "782142864272b9fc3c1265821ae3762ae7f53357b656ce50a34263e213b37fc7"
+    },
+    {
+      "path": "assets/previews/library-light-orange.jpg",
+      "bytes": 122956,
+      "sha256": "e6ee9a20956d1cc1c47a396588d77fb538392e8438dad316d02d8855f4e0ddee"
+    },
+    {
+      "path": "assets/previews/library-narrow.jpg",
+      "bytes": 79189,
+      "sha256": "877f296a0e76912f750ee206e0dcd6a4d1104ced9cff9e9db67bb7dd4992e0a7"
+    },
+    {
+      "path": "docs/brand-concept.md",
+      "bytes": 2047,
+      "sha256": "5779632afc05d5261b6e10820c31e3adbfdc77df048034c62544d03a0e613953"
+    },
+    {
+      "path": "docs/codex-rebuild-prompt.md",
+      "bytes": 43888,
+      "sha256": "c298d8ebc8a0b9737c6ac1d653ece023725f2eb88a2f81c267667b9633a13752"
+    },
+    {
+      "path": "docs/demo-artwork.md",
+      "bytes": 3285,
+      "sha256": "163ecad5ab48fa51b25b311e97ba0a4aa37f7d55d508dea1543a1d4cee3462eb"
+    },
+    {
+      "path": "docs/design-review.md",
+      "bytes": 9204,
+      "sha256": "04cdfeb61790a3e14948c630c369eaf99c8f4385e17ad45c717fa528cf5ac1b4"
+    },
+    {
+      "path": "docs/desktop-architecture-research.md",
+      "bytes": 19495,
+      "sha256": "dd5ce96a154163715512068c7d55905a3d7d0d1c49c56e7aecd25326c78bbe83"
+    },
+    {
+      "path": "docs/desktop-reference-study.md",
+      "bytes": 16380,
+      "sha256": "397cd42cc28a2e07d9e55aac5cb9c4fd452d92aa41ebc978db6ff5b2ff82f9ad"
+    },
+    {
+      "path": "docs/device-workflow-comparison.md",
+      "bytes": 25585,
+      "sha256": "b3e0b75d8540fcd1b01fbecc39ede78d76a2da168f63d366e56f8a2d05bb67ea"
+    },
+    {
+      "path": "docs/existing-repository-audit.md",
+      "bytes": 8721,
+      "sha256": "0499fb364b95d64b6e8b7b20f5aa703dba59638334dbe6d355ed92a57ed3a7c8"
+    },
+    {
+      "path": "docs/interface-preview.html",
+      "bytes": 53451,
+      "sha256": "376cc97e57bcef7cf9bb3bc42e3c928d5854708a37202b0ed31d3619762901ed"
+    },
+    {
+      "path": "docs/legal-release-notes.md",
+      "bytes": 9493,
+      "sha256": "c4e285c10b30904790904a412d68337d56e79afdb61a3323dd78c08bb061e80e"
+    },
+    {
+      "path": "docs/license-draft.md",
+      "bytes": 2088,
+      "sha256": "e724cb4cd30c42a5192188b70d4be29a32717603110d7903e9e188764fa06ca1"
+    },
+    {
+      "path": "docs/media-device-research.md",
+      "bytes": 31178,
+      "sha256": "28851bedc6c883718b6bf6c0cd33efeb7a68c28edd5c67390077164967402c75"
+    },
+    {
+      "path": "docs/preview-walkthrough.md",
+      "bytes": 3449,
+      "sha256": "452fa875b340dbb50724132ad402c19d905a8bcbf42e9e36bb5b45e3966a619f"
+    },
+    {
+      "path": "docs/privacy-policy-draft.md",
+      "bytes": 6557,
+      "sha256": "fd0370e715852952c417db028ab667ec7dbd3e0d603a46bbc21ad26e95c10b37"
+    },
+    {
+      "path": "docs/project-brief.md",
+      "bytes": 10753,
+      "sha256": "e2f66c5e2d1b652f9cc496035f42074f0e0821c2ac76086d8d27c0c280b08e8b"
+    },
+    {
+      "path": "docs/release-testing-research.md",
+      "bytes": 15784,
+      "sha256": "2ed471b1c46b38479d7233463540afde7d50b767bf637feb0c07df47d9ffbe1d"
+    },
+    {
+      "path": "docs/terms-of-use-draft.md",
+      "bytes": 4534,
+      "sha256": "78e27fbba8f51275ce835a68875319241aa0903dee64c8586e6d79d66a63c240"
+    },
+    {
+      "path": "docs/ui-ux-research.md",
+      "bytes": 21609,
+      "sha256": "bc68ad268ca847a876cdabbb0e389e5dfee4862c7e04f7304576598a6f1b3327"
+    },
+    {
+      "path": "docs/validation-record.md",
+      "bytes": 8441,
+      "sha256": "a5496f467fb43d717ff15d2f1de8bff47f1cca5b6657f0cd388a6ef5f1728b05"
+    },
+    {
+      "path": "scripts/check-interface.py",
+      "bytes": 2574,
+      "sha256": "823d5dcc530e7015b91400a3a089dcdac98aed600e3841153c7e8a931b944953"
+    },
+    {
+      "path": "scripts/check-research.py",
+      "bytes": 3194,
+      "sha256": "b25d449f5b255ce7cb3f7c80a9333cd2e8b31174ee88295063eff26a0a834a71"
+    }
+  ]
+}

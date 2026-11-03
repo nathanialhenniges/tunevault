@@ -1,0 +1,43 @@
+# Existing TuneVault inspection
+
+Inspected 2026-10-28 through the authenticated GitHub connector. This is source inspection, not a build, runtime, or security audit. No local TuneVault checkout was found at the two expected sibling paths; no application files were changed.
+
+## Verified baseline
+
+- Repository: [nathanialhenniges/tunevault](https://github.com/nathanialhenniges/tunevault), public, archived, default branch `main`.
+- Inspected commit: [`1618e447d01d5fc745c5260874ed72fbb73bab5f`](https://github.com/nathanialhenniges/tunevault/commit/1618e447d01d5fc745c5260874ed72fbb73bab5f), 2026-08-25. Recheck before the rebuild. Archived state must be changed by the owner before future pushes/releases; this research does not unarchive it.
+- Manifest version 3.0.0: Electron 33, electron-vite 3, React 19, TypeScript 5, Tailwind 4, Zustand 5, node-id3, electron-builder 25, Vitest. This identifies the old implementation; it is not a recommendation to reuse old dependency versions. [Manifest](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/package.json).
+- Existing instruction file is `CLAUDE.md`; v3 explicitly removed full playback, central library and timer sync after earlier duplication/recopy problems. The new request adds durable cross-device playlist/transfer management, which justifies a new index, but does not justify reintroducing a full player or copying the library on every refresh. The future clean rebuild should use `AGENTS.md` only. [Historical notes](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/CLAUDE.md).
+
+## Keep the intent
+
+| Existing behavior | Rebuild requirement |
+| --- | --- |
+| Per-device folders, user capacity limits | Explicit device profiles and preflight export plans |
+| Local drag-in, native drag-out and reveal | Preserve approachable file workflows on both operating systems |
+| Fill missing tags rather than replace good ones | Field provenance, user locks, preview and undo |
+| Metadata lookup pacing and caching | Rate-limited providers, expiry and revalidation of media matches |
+| Native menus, dialogs, Trash and system theme | Retain platform conventions and visible keyboard focus |
+| Manual “on iPod” marks | Honest per-device versioned receipts; distinguish user confirmation from verification |
+| Source playlist refresh | Non-destructive snapshot diff including order changes and missing occurrences |
+
+These intentions appear in the [README](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/README.md) and inspected services. Historical README claims are not current service guarantees.
+
+## Gaps the new prompt must address
+
+1. **Exact playlist order and repeats.** Downloads append successful jobs to `done` as parallel workers finish; `buildM3U` preserves its input order. Cross-playlist duplicate skipping adds no playlist reference. The resolver also filters unmatched rows out. These paths cannot be reused as proof of exact order or complete playlists. Store ordered occurrences independently from files; never silently drop an unavailable row. [Download service](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/download.service.ts), [resolver](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/resolve/index.ts), [M3U helper](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/shared/utils.ts).
+2. **Storage-cap claims exceed implementation evidence.** Before each write the service checks current usage, then an estimate only when `ignoreEstimate` is false. Parallel workers can see the same usage; estimates are not exact bytes. This is not proof of the README's hard “cannot overflow” promise. Stage a completed rendition, reserve and commit measured bytes under one export writer, and enforce actual destination free space. Do not auto-delete. [Download service](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/download.service.ts).
+3. **Matching is too permissive for a curated library.** First-result YouTube/SoundCloud matching and permanently cached title/artist keys can lock in a cover/live/remix/wrong-duration result. Title-only deduplication and ASCII-only normalization can merge unrelated tracks and erase non-Latin distinctions. Use stable source IDs, recording/version evidence and content hashes; present uncertain candidates. [YouTube resolver](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/resolve/youtube.ts), [identity helpers](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/shared/utils.ts).
+4. **Multiformat tagging is incomplete.** node-id3 handles MP3. FLAC/Opus defer download-time tagging to yt-dlp; library reads are ID3-specific. Local untagged files can return `null` and miss enrichment. Treat format-aware tag read/write plus post-write probe as a supported-format contract. Keep album track/disc numbers separate from playlist position. [Tag service](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/tag.service.ts).
+5. **Transfer marks are path-only.** Relative filename plus timestamp does not detect a changed encode/artwork/tag or a different device. Use device, rendition hash, metadata/art version and playlist-order revision; a rename alone should not invalidate identity. [Transfer service](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/transfer.service.ts).
+6. **Do not preserve public-page scraping promises.** Spotify embed and Apple serialized-page parsers are heuristic and cannot prove completeness or permission. Their old keyless behavior is a historical implementation, not a public-release commitment. Preserve unavailable entries and expose capability/access status. [Spotify parser](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/resolve/spotify-parse.ts), [resolver](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/src/main/services/resolve/index.ts).
+7. **Packaging and tests need replacement.** mac targets are arm64 only and explicitly unsigned. FFmpeg uses moving latest URLs; missing yt-dlp checksum merely warns, download failures are caught without making the script fail, and ffprobe/JS runtime are not included. CI runs source tests on Linux, packages only on tags, makes audit non-blocking, and publishes directly. No packaged E2E gate or installed-upgrade proof was found. [Binary script](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/scripts/download-binaries.mjs), [packaging](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/electron-builder.yml), [CI](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/.github/workflows/build.yml).
+8. **Public distribution differs from the old README.** The old personal-only disclaimer must be rewritten. The tree contains no `LICENSE` file although the manifest says MIT. Restore an actual license text from owner-confirmed intent and generate third-party notices/source compliance for shipped binaries; do not infer that a package field licenses every dependency. [Tree](https://github.com/nathanialhenniges/tunevault/tree/1618e447d01d5fc745c5260874ed72fbb73bab5f), [manifest](https://github.com/nathanialhenniges/tunevault/blob/1618e447d01d5fc745c5260874ed72fbb73bab5f/package.json).
+
+## Local tooling verified without altering it
+
+On this Mac on 2026-10-28: `/opt/homebrew/bin/yt-dlp` reports `2026.10.21`; `/opt/homebrew/bin/ffmpeg` reports `9.0.2`, with GPL-enabled build flags; `ffprobe`, Bun, and Node are installed. This proves installed commands exist, not extraction, format compatibility, redistribution compliance, Windows support, or device transfer. Public installers must bundle their own tested tools and must not depend on this Mac's Homebrew installation.
+
+## Explicit evidence boundary
+
+Inspected README, package manifest, historical working notes, Electron main setup, binary manager/download script, download, tag, transfer and resolver services, identity/M3U helpers, build configuration and CI. No old code was installed or executed. No copyrighted audio was downloaded, no playlists/accounts were authenticated, and no physical player or updater was tested.

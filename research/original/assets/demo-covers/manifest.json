@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Fictional TuneVault UI fixture artwork; not real releases or bundled music.",
+  "created": "2026-10-29",
+  "preserveGenerationProvenance": true,
+  "covers": [
+    {
+      "file": "after-hours.png",
+      "album": "AFTER HOURS",
+      "artist": "NORTHBOUND FM",
+      "fictional": true,
+      "generatedWith": "built-in imagegen",
+      "prompt": "Use case: illustration-story. Asset: finished square album-cover artwork for a FICTIONAL music-library demo. Create ONE full-bleed square cover, no device mockup, no vinyl record outside the cover, no surrounding background or presentation sheet. Analog night photography of a deserted roadside diner through rain-streaked glass, amber light falling onto wet black asphalt, a tiny blue radio reflection. Strong off-center composition, subdued teal and warm yellow palette, deep black, generous quiet space. A believable late-1990s downtempo independent record sleeve. Realistic imperfect film grain and understated typography, not a shiny cinematic render. Text only these exact two strings, legible and modestly sized: title \"AFTER HOURS\" and artist \"NORTHBOUND FM\". No additional text, logos, brand marks, sticker, explicit-content badge or watermark. Original composition, no imitation of a named artist or existing album. Designed to be visually distinctive in a 34px thumbnail and attractive at 102px in a desktop music metadata inspector. Avoid generic AI fantasy art, oversaturated purple gradients, chrome lettering, bloated fonts and irrelevant wolf motifs. This is honestly AI-generated demo artwork; retain provenance metadata."
+    },
+    {
+      "file": "small-satellites.png",
+      "album": "SMALL SATELLITES",
+      "artist": "LUNAR TRANSIT",
+      "fictional": true,
+      "generatedWith": "built-in imagegen",
+      "prompt": "Use case: illustration-story. Asset: finished square album-cover artwork for a FICTIONAL music-library demo. Create ONE full-bleed square cover, no device mockup, no vinyl record outside the cover, no surrounding background or presentation sheet. Early-2000s independent electronic record sleeve using cut-paper collage: cream paper, a rust-red orbital circle, small offset satellite silhouettes and halftone diagram fragments, pale blue rectangles, tactile misregistered print. Restrained modernist editorial layout, abundant warm off-white, fine black typography. No space photo, no glowing planets, no cyberpunk. Text only these exact two strings, legible and modestly sized: title \"SMALL SATELLITES\" and artist \"LUNAR TRANSIT\". No additional text, logos, brand marks, sticker, explicit-content badge or watermark. Original composition, no imitation of a named artist or existing album. Designed to be visually distinctive in a 34px thumbnail and attractive at 102px in a desktop music metadata inspector. Avoid generic AI fantasy art, oversaturated purple gradients, chrome lettering, bloated fonts and irrelevant wolf motifs. This is honestly AI-generated demo artwork; retain provenance metadata."
+    },
+    {
+      "file": "blue-hours.png",
+      "album": "BLUE HOURS",
+      "artist": "THE QUIET NORTH",
+      "fictional": true,
+      "generatedWith": "built-in imagegen",
+      "prompt": "Use case: illustration-story. Asset: finished square album-cover artwork for a FICTIONAL music-library demo. Create ONE full-bleed square cover, no device mockup, no vinyl record outside the cover, no surrounding background or presentation sheet. Quiet fine-art photo of winter reeds beside a dark lake in blue hour, pale silver-blue horizon, a small distant warm lit window. Minimal atmospheric indie music sleeve. Asymmetric framing, cool washed cyan-gray and deep indigo, natural soft grain, thoughtful typography on open sky. No mountains with giant moon, no neon. Text only these exact two strings, legible and modestly sized: title \"BLUE HOURS\" and artist \"THE QUIET NORTH\". No additional text, logos, brand marks, sticker, explicit-content badge or watermark. Original composition, no imitation of a named artist or existing album. Designed to be visually distinctive in a 34px thumbnail and attractive at 102px in a desktop music metadata inspector. Avoid generic AI fantasy art, oversaturated purple gradients, chrome lettering, bloated fonts and irrelevant wolf motifs. This is honestly AI-generated demo artwork; retain provenance metadata."
+    },
+    {
+      "file": "night-shift.png",
+      "album": "NIGHT SHIFT",
+      "artist": "SIGNAL / NOISE",
+      "fictional": true,
+      "generatedWith": "built-in imagegen",
+      "prompt": "Use case: illustration-story. Asset: finished square album-cover artwork for a FICTIONAL music-library demo. Create ONE full-bleed square cover, no device mockup, no vinyl record outside the cover, no surrounding background or presentation sheet. Underground radio mix sleeve: close analog black-and-white photograph of a utilitarian radio transmitter/control panel, tight crop of knobs and worn labeling, one vivid vermilion-orange vertical rectangle and subtle paper grain. Swiss editorial grid, small precise white or black typography, high visual contrast, documentary feel. Not gaming UI, no futuristic holograms. Text only these exact two strings, legible and modestly sized: title \"NIGHT SHIFT\" and artist \"SIGNAL / NOISE\". No additional text, logos, brand marks, sticker, explicit-content badge or watermark. Original composition, no imitation of a named artist or existing album. Designed to be visually distinctive in a 34px thumbnail and attractive at 102px in a desktop music metadata inspector. Avoid generic AI fantasy art, oversaturated purple gradients, chrome lettering, bloated fonts and irrelevant wolf motifs. This is honestly AI-generated demo artwork; retain provenance metadata."
+    },
+    {
+      "file": "coast-to-coast.png",
+      "album": "COAST TO COAST",
+      "artist": "MORROW",
+      "fictional": true,
+      "generatedWith": "built-in imagegen",
+      "prompt": "Use case: illustration-story. Asset: finished square album-cover artwork for a FICTIONAL music-library demo. Create ONE full-bleed square cover, no device mockup, no vinyl record outside the cover, no surrounding background or presentation sheet. Tactile vintage travel-photo album sleeve: sun-faded roadside payphone near a quiet coastal road, cropped ocean and pale sky, terracotta and dusty seafoam colors, photographed on medium-format film, subtle aged cream-paper edge printed INSIDE the square art. Confident small typography integrated in a calm margin. Warm hopeful independent road-trip record, not glossy stock photography. Text only these exact two strings, legible and modestly sized: title \"COAST TO COAST\" and artist \"MORROW\". No additional text, logos, brand marks, sticker, explicit-content badge or watermark. Original composition, no imitation of a named artist or existing album. Designed to be visually distinctive in a 34px thumbnail and attractive at 102px in a desktop music metadata inspector. Avoid generic AI fantasy art, oversaturated purple gradients, chrome lettering, bloated fonts and irrelevant wolf motifs. This is honestly AI-generated demo artwork; retain provenance metadata."
+    },
+    {
+      "file": "sunday-tapes.png",
+      "album": "SUNDAY TAPES",
+      "artist": "PARK RADIO",
+      "fictional": true,
+      "generatedWith": "built-in imagegen",
+      "prompt": "Use case: illustration-story. Asset: finished square album-cover artwork for a FICTIONAL music-library demo. Create ONE full-bleed square cover, no device mockup, no vinyl record outside the cover, no surrounding background or presentation sheet. Handmade mellow instrumental record sleeve: simple painted illustration of a portable cassette recorder on a green picnic table with late-afternoon leaf shadows, ochre yellow, moss green, warm cream and charcoal, gouache and slightly rough paper texture. Careful editorial composition with modest hand-set-looking type, mature independent music artwork, not cartoon mascot art, no neon. Text only these exact two strings, legible and modestly sized: title \"SUNDAY TAPES\" and artist \"PARK RADIO\". No additional text, logos, brand marks, sticker, explicit-content badge or watermark. Original composition, no imitation of a named artist or existing album. Designed to be visually distinctive in a 34px thumbnail and attractive at 102px in a desktop music metadata inspector. Avoid generic AI fantasy art, oversaturated purple gradients, chrome lettering, bloated fonts and irrelevant wolf motifs. This is honestly AI-generated demo artwork; retain provenance metadata."
+    }
+  ]
+}
